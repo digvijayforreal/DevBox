@@ -1,0 +1,84 @@
+"""Central configuration. Everything is overridable through `.env`."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / ".env")
+
+HOME = Path.home()
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, default))
+    except ValueError:
+        return default
+
+
+def _env_paths(name: str, default: list[Path]) -> list[Path]:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    return [Path(os.path.expandvars(p.strip())).expanduser() for p in raw.split(";") if p.strip()]
+
+
+# --- Groq -------------------------------------------------------------------
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+
+# Groq returns the real RPD + TPM limits / remaining / reset in every response's
+# headers, and DevBox uses those. These values are only used before the first
+# response and for limits Groq doesn't send in headers (RPM, TPD).
+# See https://console.groq.com/settings/limits for your organization's numbers.
+GROQ_RPM_LIMIT = _env_int("GROQ_RPM_LIMIT", 30)
+GROQ_RPD_LIMIT = _env_int("GROQ_RPD_LIMIT", 1000)
+GROQ_TPM_LIMIT = _env_int("GROQ_TPM_LIMIT", 8000)
+GROQ_TPD_LIMIT = _env_int("GROQ_TPD_LIMIT", 200_000)
+GROQ_PLAN = os.getenv("GROQ_PLAN", "Free")
+
+# --- Filesystem safety --------------------------------------------------------
+ALLOWED_ROOTS: list[Path] = _env_paths(
+    "DEVBOX_ALLOWED_ROOTS",
+    [HOME / "Desktop", HOME / "Downloads", HOME / "Documents"],
+)
+
+_sysdrive = Path(os.environ.get("SystemDrive", "C:") + "\\")
+PROTECTED_PATHS: list[Path] = [
+    Path(os.environ.get("SystemRoot", r"C:\Windows")),
+    Path(os.environ.get("ProgramFiles", r"C:\Program Files")),
+    Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")),
+    Path(os.environ.get("ProgramData", r"C:\ProgramData")),
+    _sysdrive / "System Volume Information",
+    _sysdrive / "$Recycle.Bin",
+]
+# Readable, but never deletable.
+NO_DELETE_PATHS: list[Path] = [PROJECT_ROOT]
+
+# --- Process safety -----------------------------------------------------------
+PROTECTED_PROCESSES = {
+    "system", "system idle process", "registry", "smss.exe", "csrss.exe",
+    "wininit.exe", "winlogon.exe", "services.exe", "lsass.exe", "svchost.exe",
+    "explorer.exe", "dwm.exe", "fontdrvhost.exe", "memcompression",
+    "secure system", "msmpeng.exe", "sihost.exe", "ctfmon.exe",
+}
+
+# --- Web UI -------------------------------------------------------------------
+# Always bound to 127.0.0.1 (never exposed to the network).
+WEB_PORT = _env_int("DEVBOX_PORT", 8765)
+OPEN_BROWSER = os.getenv("DEVBOX_OPEN_BROWSER", "1") not in ("0", "false", "no")
+
+# --- Limits -------------------------------------------------------------------
+SCAN_TIME_LIMIT_S = _env_int("DEVBOX_SCAN_TIME_LIMIT", 25)
+LLM_TOOL_OUTPUT_CHARS = 4000  # cap on what normal tools send back to the LLM
+MAX_HANDOFFS_PER_TURN = 4
+
+LOG_DIR = PROJECT_ROOT / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+ACTION_LOG = LOG_DIR / "devbox_actions.log"
+ACTIVITY_LOG = LOG_DIR / "devbox_activity.log"
+USAGE_FILE = LOG_DIR / "groq_usage.json"

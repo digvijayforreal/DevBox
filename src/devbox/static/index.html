@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DevBox</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <a class="skip" href="#input">Skip to message box</a>
+
+  <header class="topbar">
+    <div class="brand">
+      <span>DevBox</span>
+    </div>
+
+    <nav class="agents" aria-label="Agents (current one is highlighted)">
+      <span class="chip" data-agent="triage">Triage</span>
+      <span class="arrow" aria-hidden="true">→</span>
+      <span class="chip" data-agent="storage">Storage</span>
+      <span class="chip" data-agent="process">Process</span>
+      <span class="chip" data-agent="dependency">Dependency</span>
+    </nav>
+
+    <div class="top-actions">
+      <span id="conn" class="conn" role="status" aria-live="polite">Connecting…</span>
+      <button id="btn-new" class="btn ghost" type="button">New chat</button>
+      <button id="btn-activity" class="btn ghost" type="button" aria-pressed="true" aria-controls="activity-panel">Activity</button>
+      <button id="btn-settings" class="btn ghost" type="button" aria-haspopup="dialog">
+        <span aria-hidden="true">⚙</span> Settings
+      </button>
+    </div>
+  </header>
+
+  <main class="layout" id="layout">
+    <section class="chat-col" aria-label="Chat">
+      <div id="chat" class="chat" role="log" aria-live="polite" aria-relevant="additions"></div>
+
+      <div id="working" class="working" hidden>
+        <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>DevBox is working… follow along in <strong>Agent activity</strong>.</span>
+      </div>
+
+      <form id="composer" class="composer" autocomplete="off">
+        <label for="input" class="sr-only">Message DevBox</label>
+        <textarea id="input" rows="1" maxlength="4000"
+                  placeholder="Ask DevBox about your PC…  (Enter to send, Shift+Enter for a new line)"></textarea>
+        <button id="send" class="btn primary" type="submit">Send</button>
+      </form>
+    </section>
+
+    <aside id="activity-panel" class="activity" aria-labelledby="activity-title">
+      <div class="panel-head">
+        <h2 id="activity-title">Agent activity</h2>
+        <button id="btn-clear-log" class="btn ghost small" type="button">Clear</button>
+      </div>
+      <ol id="events" class="events" aria-live="off"></ol>
+    </aside>
+  </main>
+
+  <!-- TYPE B approval dialog -->
+  <dialog id="approval" class="dialog approval" aria-labelledby="ap-title">
+    <form method="dialog" class="dialog-inner" id="ap-form">
+      <p class="eyebrow">Approval needed</p>
+      <h2 id="ap-title"></h2>
+      <p class="muted"><code id="ap-tool"></code></p>
+      <p id="ap-warning" class="warning" hidden></p>
+      <h3 class="label">Exactly what will happen</h3>
+      <pre id="ap-details" class="pre details"></pre>
+      <details class="edit-box">
+        <summary>Edit arguments</summary>
+        <label for="ap-args" class="label">Arguments (JSON)</label>
+        <textarea id="ap-args" class="mono" rows="6" spellcheck="false"></textarea>
+        <p id="ap-err" class="err small" role="alert"></p>
+      </details>
+      <label for="ap-reason" class="label">Reason (optional, sent to the agent if you reject)</label>
+      <input id="ap-reason" type="text" maxlength="300">
+      <div class="dialog-actions">
+        <button type="button" class="btn danger" id="ap-reject">Reject</button>
+        <button type="button" class="btn ghost" id="ap-edit">Edit &amp; run</button>
+        <button type="button" class="btn success" id="ap-approve">Approve</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Settings -->
+  <dialog id="settings" class="dialog settings" aria-labelledby="st-title">
+    <div class="dialog-inner">
+      <div class="settings-head">
+        <h2 id="st-title">Settings</h2>
+        <button type="button" class="btn ghost small" id="st-close" aria-label="Close settings">✕</button>
+      </div>
+      <div class="tabs" role="tablist" aria-label="Settings sections">
+        <button role="tab" class="tab" id="tab-btn-usage" aria-controls="tab-usage" aria-selected="true">Groq usage</button>
+        <button role="tab" class="tab" id="tab-btn-agents" aria-controls="tab-agents" aria-selected="false" tabindex="-1">Agents &amp; tools</button>
+        <button role="tab" class="tab" id="tab-btn-config" aria-controls="tab-config" aria-selected="false" tabindex="-1">Configuration</button>
+        <button role="tab" class="tab" id="tab-btn-history" aria-controls="tab-history" aria-selected="false" tabindex="-1">Action history</button>
+      </div>
+      <section role="tabpanel" id="tab-usage" aria-labelledby="tab-btn-usage" class="tabpanel"></section>
+      <section role="tabpanel" id="tab-agents" aria-labelledby="tab-btn-agents" class="tabpanel" hidden></section>
+      <section role="tabpanel" id="tab-config" aria-labelledby="tab-btn-config" class="tabpanel" hidden></section>
+      <section role="tabpanel" id="tab-history" aria-labelledby="tab-btn-history" class="tabpanel" hidden></section>
+    </div>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="assertive"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
