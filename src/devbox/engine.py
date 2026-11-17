@@ -40,8 +40,19 @@ class Session:
 
     @property
     def config(self) -> dict:
-        return {"configurable": {"thread_id": self.thread_id},
-                "callbacks": [self.callback], "recursion_limit": 60}
+        sel = self.selection
+        return {
+            "configurable": {"thread_id": self.thread_id},
+            "callbacks": [self.callback],
+            "recursion_limit": 60,
+            # Used by LangSmith (if enabled): readable trace name, filterable tags, and
+            # thread_id groups every turn of one chat into a single LangSmith thread.
+            "run_name": "DevBox turn",
+            "tags": ["devbox", *( [sel.provider, sel.model] if sel else [] )],
+            "metadata": {"thread_id": self.thread_id, "app": "devbox",
+                         "provider": sel.provider if sel else "test",
+                         "model": sel.model if sel else "fake"},
+        }
 
     def reset(self) -> None:
         self.thread_id = str(uuid.uuid4())

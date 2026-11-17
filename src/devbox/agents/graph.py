@@ -134,7 +134,8 @@ def build_graph(model: BaseChatModel, checkpointer=None):
                  "handoff_note": state.get("handoff_note", ""),
                  "handoff_count": state.get("handoff_count", 0),
                  "active_agent": name},
-                config={"tags": [f"agent:{name}"], "recursion_limit": 40},
+                config={"tags": [f"agent:{name}"], "recursion_limit": 40,
+                        "run_name": f"{name} agent", "metadata": {"agent": name}},
             )
             new_messages = result["messages"][len(ctx):]
             return Command(goto=END, update={"messages": new_messages, "active_agent": name,

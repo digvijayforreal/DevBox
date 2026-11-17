@@ -498,6 +498,11 @@ async function renderConfig() {
           `${fmt(c.limits.groq.rpm)} / ${fmt(c.limits.groq.rpd)} / ${fmt(c.limits.groq.tpm)} / ${fmt(c.limits.groq.tpd)}`),
       row("OpenAI fallback limits (RPM / TPM / RPD)",
           `${fmt(c.limits.openai.rpm)} / ${fmt(c.limits.openai.tpm)} / ${c.limits.openai.rpd ? fmt(c.limits.openai.rpd) : "not set"}`),
+      row("LangSmith tracing", c.langsmith.enabled
+        ? (c.langsmith.key_set
+            ? h("span", {}, h("span", { class: "badge ok", text: "on" }), ` → ${c.langsmith.target} · ${c.langsmith.endpoint}`)
+            : h("span", { class: "err", text: "on, but LANGSMITH_API_KEY is missing" }))
+        : h("span", { class: "muted", text: "off (set LANGSMITH_TRACING=true in .env)" })),
       row("Allowed folders", h("div", {}, c.allowed_roots.map((p) => h("div", {}, h("code", { text: p }))))),
       row("Protected (never touched)", h("div", {}, c.protected_paths.map((p) => h("div", {}, h("code", { text: p }))))),
       row("Server", `http://127.0.0.1:${c.port} (local only)`),

@@ -282,6 +282,7 @@ def api_config() -> dict:
             "openai": {"rpm": config.OPENAI_RPM_LIMIT, "tpm": config.OPENAI_TPM_LIMIT,
                        "rpd": config.OPENAI_RPD_LIMIT},
         },
+        "langsmith": langsmith_state(),
         "allowed_roots": [str(p) for p in config.ALLOWED_ROOTS],
         "protected_paths": [str(p) for p in config.PROTECTED_PATHS],
         "port": config.WEB_PORT,
@@ -290,6 +291,20 @@ def api_config() -> dict:
         "agents": {a: [{"name": t.name, "kind": tool_kind(t.name)} for t in AGENT_TOOLS[a]]
                    + [{"name": f"transfer_to_{b}", "kind": "handoff"} for b in AGENTS if b != a]
                    for a in AGENTS},
+    }
+
+
+def langsmith_state() -> dict:
+    import os
+
+    on = os.getenv("LANGSMITH_TRACING", os.getenv("LANGCHAIN_TRACING_V2", "")).strip().lower() in ("1", "true", "yes")
+    return {
+        "enabled": on,
+        "key_set": bool(os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY")),
+        "target": (os.getenv("LANGSMITH_AGENT_ID") and f"agent {os.getenv('LANGSMITH_AGENT_ID')} "
+                   f"({os.getenv('LANGSMITH_AGENT_ENVIRONMENT', 'local')})")
+                  or f"project {os.getenv('LANGSMITH_PROJECT') or 'default'}",
+        "endpoint": os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com"),
     }
 
 
