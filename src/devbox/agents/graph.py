@@ -110,25 +110,9 @@ def _prompt_middleware(name: str):
     return prompt
 
 
-def default_model() -> BaseChatModel:
-    import httpx
-    from langchain_groq import ChatGroq
-
-    from devbox.usage import usage
-
-    if not config.GROQ_API_KEY:
-        raise RuntimeError("GROQ_API_KEY is missing. Add it to .env (get one at https://console.groq.com/keys) and restart.")
-
-    def capture_rate_limits(response: httpx.Response) -> None:
-        usage.record_headers(response.headers)  # real RPD / TPM remaining from Groq
-
-    http_client = httpx.Client(timeout=120, event_hooks={"response": [capture_rate_limits]})
-    return ChatGroq(model=config.GROQ_MODEL, api_key=config.GROQ_API_KEY, temperature=0.2,
-                    max_retries=2, http_client=http_client)
-
-
-def build_graph(model: BaseChatModel | None = None, checkpointer=None):
-    model = model or default_model()
+def build_graph(model: BaseChatModel, checkpointer=None):
+    """Compile the multi-agent graph. Reusing the same checkpointer keeps the
+    conversation when the model is switched in Settings."""
     agents = {
         name: create_agent(
             model,

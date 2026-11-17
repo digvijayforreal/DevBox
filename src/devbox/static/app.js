@@ -139,6 +139,11 @@ function handle(m) {
       approvals.length = 0; currentApproval = null;
       m.pending.forEach((p) => queueApproval(p.id, p.payload));
       if (!m.pending.length && $("#approval").open) $("#approval").close();
+      setModelState(m.model);
+      break;
+    case "model":
+      setModelState(m.value);
+      if (stDlg.open && !$("#tab-model").hidden) renderModel();
       break;
     case "item": addItem(m.item); break;
     case "event":
@@ -218,6 +223,9 @@ function addItem(it) {
         h("div", { class: "card-head" }, h("span", { class: "card-icon", "aria-hidden": "true", text: "⚠️" }),
           h("strong", { text: "Action result" }), h("code", { class: "tool-name", text: it.tool })),
         h("pre", { class: "pre", text: it.text }));
+      break;
+    case "note":
+      node = h("div", { class: "note" }, h("span", {}, "🔁 ", it.text));
       break;
     case "error":
       node = h("div", { class: "msg error" }, h("div", { class: "bubble", text: "⚠ " + it.text }));
@@ -306,7 +314,7 @@ const kindBadge = (k) => h("span", { class: `kind k-${k}`, text: KIND_LABEL[k] |
 function fmtEvent(e) {
   switch (e.kind) {
     case "user": return { icon: "👤", parts: [B("you"), ": ", e.text] };
-    case "llm_start": return { icon: "🧠", parts: [A(e.agent), " calling Groq ", M(`(${e.messages} msgs)`), e.waited ? M(` · waited ${e.waited}s for rate limit`) : null] };
+    case "llm_start": return { icon: "🧠", parts: [A(e.agent), ` calling ${e.provider || "LLM"} `, M(`(${e.model ? e.model + " · " : ""}${e.messages} msgs)`), e.waited ? M(` · waited ${e.waited}s for rate limit`) : null] };
     case "llm_end": return { icon: "💬", parts: [A(e.agent), " ", M(`${e.latency}s · ${fmt(e.input_tokens)}→${fmt(e.output_tokens)} tok → `), B(e.tool_calls && e.tool_calls.length ? e.tool_calls.join(", ") : "final answer")] };
     case "tool_start": return { icon: KIND_ICON[e.tool_kind] || "🔧", parts: [A(e.agent), " → ", B(e.tool), kindBadge(e.tool_kind), e.args && e.args !== "{}" ? h("div", { class: "ev-args", text: e.args }) : null] };
     case "tool_end":
@@ -319,8 +327,8 @@ function fmtEvent(e) {
     case "approval_edit": return { icon: "✏️", cls: "approval", parts: [B("edited & approved "), e.tool] };
     case "approval_reject": return { icon: "👎", cls: "approval", parts: [B("rejected "), e.tool] };
     case "throttle": return { icon: "⏳", parts: [`${e.reason} limit near, waiting ${e.seconds}s`] };
-    case "rate_limited": return { icon: "🚫", cls: "error", parts: [B("Groq 429 rate limit: "), e.error] };
-    case "llm_error": return { icon: "❌", cls: "error", parts: [B("Groq error: "), e.error] };
+    case "rate_limited": return { icon: "🚫", cls: "error", parts: [B("429 rate limit: "), e.error] };
+    case "llm_error": return { icon: "❌", cls: "error", parts: [B("LLM error: "), e.error] };
     default: return null;
   }
 }
@@ -403,31 +411,39 @@ let configCache = null;
 
 function stat(label, value) { return h("div", { class: "stat" }, h("b", { text: String(value) }), h("span", { text: label })); }
 
-function usageRow(label, used, limit, note, source) {
-  const left = Math.max(limit - used, 0);
+const SOURCE_BADGE = {
+  provider: ["ok", (p) => `from ${p}`],
+  estimate: ["warn", () => "estimate"],
+  local: ["info", () => "counted locally"],
+};
+
+function usageRow(m, providerLabel) {
+  const left = Math.max(m.limit - m.used, 0);
+  const [cls, text] = SOURCE_BADGE[m.source] || SOURCE_BADGE.local;
   return h("div", { class: "usage-row" },
     h("div", { class: "metric-top" },
-      h("span", {}, h("span", { class: "metric-label", text: label }), " ",
-        h("span", { class: `badge ${source === "groq" ? "ok" : "info"}`,
-                    text: source === "groq" ? "from Groq" : "counted locally" })),
-      h("span", {}, B(`${fmt(left)} left`), M(` · ${fmt(used)} / ${fmt(limit)} used`))),
-    meter(limit ? (used / limit) * 100 : 0),
-    h("div", { class: "muted small", text: note }));
+      h("span", {}, h("span", { class: "metric-label", text: m.label }), " ",
+        h("span", { class: `badge ${cls}`, text: text(providerLabel) })),
+      h("span", {}, B(`${fmt(left)} left`), M(` · ${fmt(m.used)} / ${fmt(m.limit)} used`))),
+    meter(m.limit ? (m.used / m.limit) * 100 : 0),
+    h("div", { class: "muted small", text: m.note }));
 }
 
+let usageProvider = null; // which provider the Usage tab shows (default: active one)
+
 function renderUsage(s) {
-  const src = s.live ? "groq" : "local";
-  const waitNote = s.live ? "" : "  (estimate until the first Groq response)";
+  const switcher = h("div", { class: "row" }, ...Object.entries(modelState?.providers || {}).map(([name, p]) =>
+    h("button", { type: "button", class: `btn small ${name === s.provider ? "primary" : "ghost"}`,
+                  "aria-pressed": name === s.provider ? "true" : "false",
+                  onclick: () => { usageProvider = name; loadUsage(); } },
+      p.label, name === modelState.provider ? " (active)" : "")));
   $("#tab-usage").replaceChildren(...[
-    h("div", { class: "usage-head" }, B(`${s.provider} · ${s.model}`), h("span", { class: "badge info", text: `plan: ${s.plan}` }),
+    switcher,
+    h("div", { class: "usage-head" }, B(`${s.provider_label} · ${s.model || "no model selected"}`),
+      h("span", { class: "badge info", text: `plan: ${s.plan}` }),
       h("span", { class: `badge ${s.key_set ? "ok" : "bad"}`, text: s.key_set ? "API key set" : "API key missing" }),
-      s.live ? M(`updated ${s.headers_age} ago`) : null),
-    usageRow("Requests per day (RPD)", s.rpd_limit - s.rpd_remaining, s.rpd_limit,
-             `Resets in ${s.rpd_reset_in}${waitNote}`, src),
-    usageRow("Tokens per minute (TPM)", s.tpm_limit - s.tpm_remaining, s.tpm_limit,
-             `Resets in ${s.tpm_reset_in}${waitNote}`, src),
-    usageRow("Requests per minute (RPM)", s.rpm_used, s.rpm_limit, "Rolling 60-second window", "local"),
-    usageRow("Tokens per day (TPD)", s.tpd_used, s.tpd_limit, "DevBox's own calls today", "local"),
+      s.live ? M(`limits updated ${s.headers_age} ago`) : M("no response from this provider yet")),
+    ...s.meters.map((m) => usageRow(m, s.provider_label)),
     h("div", { class: "stats" },
       stat("Requests this session", fmt(s.requests)),
       stat("Input tokens (session)", fmt(s.input_tokens)),
@@ -440,16 +456,17 @@ function renderUsage(s) {
       stat("Waited for limits", `${s.throttle_waits}×`)),
     s.last_error ? h("p", { class: "err small", text: `Last error: ${s.last_error}` }) : null,
     h("p", { class: "muted small" },
-      "Requests/day and tokens/minute come straight from Groq's rate-limit headers on every response. ",
-      "Limits apply to your whole Groq organization. Requests/minute and tokens/day aren't in the headers, so DevBox counts ",
-      "its own calls against GROQ_RPM_LIMIT / GROQ_TPD_LIMIT in .env. See your exact limits on the ",
-      h("a", { href: "https://console.groq.com/settings/limits", target: "_blank", rel: "noopener noreferrer", text: "Groq limits page" }),
+      `"from ${s.provider_label}" values come from the rate-limit headers on every response. `,
+      "\"Counted locally\" values aren't in the headers, so DevBox counts its own calls against the limits in .env. ",
+      "Limits apply to your whole organization, so other apps using the same account aren't counted locally. Exact limits: ",
+      h("a", { href: s.limits_url, target: "_blank", rel: "noopener noreferrer", text: `${s.provider_label} limits page` }),
       "."),
   ].filter(Boolean));
 }
 
 async function loadUsage() {
-  try { renderUsage(await api("/api/usage")); }
+  const q = usageProvider ? `?provider=${encodeURIComponent(usageProvider)}` : "";
+  try { renderUsage(await api(`/api/usage${q}`)); }
   catch (e) { $("#tab-usage").replaceChildren(h("p", { class: "err", text: `Could not load usage: ${e.message}` })); }
 }
 
@@ -474,12 +491,13 @@ async function renderConfig() {
   const row = (k, v) => [h("dt", { text: k }), h("dd", {}, v)];
   $("#tab-config").replaceChildren(
     h("dl", { class: "kv" },
-      row("LLM provider", c.provider),
-      row("Model", h("code", { text: c.model })),
-      row("API key", c.key_set ? "set in .env" : h("span", { class: "err", text: "missing: add GROQ_API_KEY to .env" })),
-      row("Plan", c.plan),
-      row("Fallback limits (RPM / RPD / TPM / TPD)",
-          `${fmt(c.limits.rpm)} / ${fmt(c.limits.rpd)} / ${fmt(c.limits.tpm)} / ${fmt(c.limits.tpd)}`),
+      row("Active model", modelState ? `${modelState.providers[modelState.provider].label} · ${modelState.model || "(first available)"}` : "?"),
+      row("GROQ_API_KEY", c.keys.groq ? "set in .env" : h("span", { class: "muted", text: "not set" })),
+      row("OPENAI_API_KEY", c.keys.openai ? "set in .env" : h("span", { class: "muted", text: "not set" })),
+      row("Groq fallback limits (RPM / RPD / TPM / TPD)",
+          `${fmt(c.limits.groq.rpm)} / ${fmt(c.limits.groq.rpd)} / ${fmt(c.limits.groq.tpm)} / ${fmt(c.limits.groq.tpd)}`),
+      row("OpenAI fallback limits (RPM / TPM / RPD)",
+          `${fmt(c.limits.openai.rpm)} / ${fmt(c.limits.openai.tpm)} / ${c.limits.openai.rpd ? fmt(c.limits.openai.rpd) : "not set"}`),
       row("Allowed folders", h("div", {}, c.allowed_roots.map((p) => h("div", {}, h("code", { text: p }))))),
       row("Protected (never touched)", h("div", {}, c.protected_paths.map((p) => h("div", {}, h("code", { text: p }))))),
       row("Server", `http://127.0.0.1:${c.port} (local only)`),
@@ -495,7 +513,88 @@ async function renderHistory() {
     r.lines.length ? h("pre", { class: "pre details", text: r.lines.join("\n") }) : h("p", { class: "muted", text: "No actions yet." }));
 }
 
-const TABS = { usage: loadUsage, agents: renderAgents, config: renderConfig, history: renderHistory };
+/* ----- Model tab ----- */
+let modelState = null;
+let modelDraft = null; // { provider, model } being edited in the tab
+
+function setModelState(s) {
+  if (!s) return;
+  modelState = s;
+  const p = s.providers[s.provider];
+  const btn = $("#btn-model");
+  btn.textContent = `${p ? p.label : s.provider} · ${s.model || "auto"}`;
+  btn.setAttribute("aria-label", `Current model: ${btn.textContent}. Change model`);
+}
+
+async function renderModel() {
+  const tab = $("#tab-model");
+  if (!modelState) modelState = await api("/api/llm");
+  if (!modelDraft) modelDraft = { provider: modelState.provider, model: modelState.model };
+  const providers = modelState.providers;
+  const draftP = providers[modelDraft.provider];
+
+  const cards = h("div", { class: "providers", role: "radiogroup", "aria-label": "LLM provider" },
+    Object.entries(providers).map(([name, p]) => {
+      const radio = h("input", { type: "radio", name: "provider", value: name, disabled: !p.key_set,
+                                 checked: name === modelDraft.provider });
+      radio.addEventListener("change", () => {
+        modelDraft = { provider: name, model: name === modelState.provider ? modelState.model : p.default_model };
+        renderModel();
+      });
+      return h("label", { class: `provider-card ${name === modelDraft.provider ? "selected" : ""} ${p.key_set ? "" : "disabled"}` },
+        radio,
+        h("span", {}, h("b", { text: p.label }),
+          p.key_set ? h("span", { class: "badge ok", text: "API key set" })
+                    : h("span", { class: "muted small" }, `Add ${p.env_key} to .env and restart. `,
+                        h("a", { href: p.keys_url, target: "_blank", rel: "noopener noreferrer", text: "Get a key" })),
+          name === modelState.provider ? h("div", { class: "muted small", text: "active" }) : null));
+    }));
+
+  const select = h("select", { id: "model-select", "aria-describedby": "model-help" },
+    h("option", { value: "", text: "Loading models…" }));
+  const custom = h("input", { type: "text", id: "model-custom", placeholder: "or type a model ID", value: "" });
+  const refresh = h("button", { type: "button", class: "btn small ghost", text: "↻ Refresh list" });
+  const status = h("p", { id: "model-help", class: "muted small" });
+  const apply = h("button", { type: "button", class: "btn primary", text: "Use this model" });
+
+  tab.replaceChildren(
+    h("div", { class: "current-model" }, M("Active: "),
+      B(`${providers[modelState.provider].label} · ${modelState.model || "first available model"}`)),
+    h("h3", { class: "label", text: "1. Provider" }), cards,
+    h("h3", { class: "label", text: "2. Model" }),
+    h("div", { class: "field" },
+      h("label", { for: "model-select", class: "sr-only", text: "Model" }),
+      h("div", { class: "row" }, select, refresh),
+      h("label", { for: "model-custom", class: "sr-only", text: "Custom model ID" }), custom),
+    status,
+    h("p", { class: "muted small", text: "DevBox needs a model that supports tool calling. Switching keeps your conversation; the next message uses the new model." }),
+    h("div", { class: "row" }, apply));
+
+  const load = async (force = false) => {
+    if (!draftP.key_set) { select.replaceChildren(h("option", { value: "", text: "No API key" })); return; }
+    status.textContent = "Loading the models available to your key…";
+    const r = await api(`/api/models?provider=${encodeURIComponent(modelDraft.provider)}${force ? "&refresh=true" : ""}`);
+    const models = [...r.models];
+    if (modelDraft.model && !models.includes(modelDraft.model)) models.unshift(modelDraft.model);
+    select.replaceChildren(...models.map((id) => h("option", { value: id, text: id, selected: id === modelDraft.model })));
+    if (!modelDraft.model && models.length) modelDraft.model = models[0];
+    status.textContent = r.error ? `Couldn't load the list: ${r.error}` : `${r.models.length} models available to your ${draftP.label} key.`;
+    status.className = r.error ? "err small" : "muted small";
+  };
+  select.addEventListener("change", () => { modelDraft.model = select.value; custom.value = ""; });
+  custom.addEventListener("input", () => { if (custom.value.trim()) modelDraft.model = custom.value.trim(); });
+  refresh.addEventListener("click", () => load(true).catch((e) => { status.textContent = e.message; }));
+  apply.addEventListener("click", () => {
+    const model = custom.value.trim() || select.value || modelDraft.model;
+    if (!model) { toast("Pick a model first.", "warn"); return; }
+    if (busy) { toast("Wait for the current request to finish.", "warn"); return; }
+    send({ type: "set_model", provider: modelDraft.provider, model });
+    modelDraft = { provider: modelDraft.provider, model };
+  });
+  load().catch((e) => { status.textContent = e.message; status.className = "err small"; });
+}
+
+const TABS = { model: renderModel, usage: loadUsage, agents: renderAgents, config: renderConfig, history: renderHistory };
 
 function selectTab(name) {
   for (const key of Object.keys(TABS)) {
@@ -518,7 +617,9 @@ document.querySelectorAll(".tab").forEach((btn, i, all) => {
     next.focus(); next.click();
   });
 });
-$("#btn-settings").addEventListener("click", () => { stDlg.showModal(); selectTab("usage"); });
+function openSettings(tab) { modelDraft = null; usageProvider = null; stDlg.showModal(); selectTab(tab); }
+$("#btn-settings").addEventListener("click", () => openSettings("model"));
+$("#btn-model").addEventListener("click", () => openSettings("model"));
 $("#st-close").addEventListener("click", () => stDlg.close());
 stDlg.addEventListener("close", () => { clearInterval(usageTimer); usageTimer = null; });
 stDlg.addEventListener("click", (ev) => { if (ev.target === stDlg) stDlg.close(); });

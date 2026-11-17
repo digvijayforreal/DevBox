@@ -1,7 +1,7 @@
 """LangChain callback handler that turns every LLM/tool step into an activity event.
 
 Events are delivered to `sink(event: dict)` (the web UI) and written to
-logs/devbox_activity.log. It also feeds the Groq usage tracker and waits
+logs/devbox_activity.log. It also feeds the active provider's usage tracker and waits
 before requests that would break the RPM/TPM limits.
 """
 
@@ -18,7 +18,7 @@ from langchain_core.messages import ToolMessage
 
 from devbox import config
 from devbox.tools import ACTION_TOOL_NAMES, SHOW_TOOL_NAMES
-from devbox.usage import usage
+from devbox.usage import tracker
 
 Sink = Callable[[dict], None]
 
@@ -47,6 +47,14 @@ class ActivityCallback(BaseCallbackHandler):
         self.sink = sink
         self.starts: dict[UUID, float] = {}
         self.names: dict[UUID, str] = {}
+        from devbox import llm
+
+        sel = llm.current()  # Session updates these whenever the model is (re)built
+        self.provider, self.model = sel.provider, sel.model
+
+    @property
+    def usage(self):
+        return tracker(self.provider)
 
     # -- helpers -----------------------------------------------------------
     def emit(self, kind: str, **data: Any) -> None:
@@ -65,11 +73,11 @@ class ActivityCallback(BaseCallbackHandler):
     # -- LLM -----------------------------------------------------------------
     def on_chat_model_start(self, serialized, messages, *, run_id, tags=None, **kw):
         agent = _agent_from(tags)
-        waited = usage.wait_for_slot(
+        waited = self.usage.wait_for_slot(
             on_wait=lambda d, why: self.emit("throttle", agent=agent, seconds=round(d, 1), reason=why))
         self.starts[run_id] = time.time()
         self.emit("llm_start", agent=agent, messages=len(messages[0]) if messages else 0,
-                  waited=round(waited, 1))
+                  waited=round(waited, 1), provider=self.usage.p["label"], model=self.model)
 
     def on_llm_end(self, response, *, run_id, tags=None, **kw):
         latency = time.time() - self.starts.pop(run_id, time.time())
@@ -82,13 +90,13 @@ class ActivityCallback(BaseCallbackHandler):
             calls = [c["name"] for c in (getattr(msg, "tool_calls", None) or [])]
         except (IndexError, AttributeError):
             pass
-        usage.record_success(in_t, out_t, latency)
+        self.usage.record_success(in_t, out_t, latency)
         self.emit("llm_end", agent=_agent_from(tags), latency=round(latency, 2),
                   input_tokens=in_t, output_tokens=out_t, tool_calls=calls)
 
     def on_llm_error(self, error, *, run_id, tags=None, **kw):
         self.starts.pop(run_id, None)
-        is_429 = usage.record_error(error)
+        is_429 = self.usage.record_error(error)
         self.emit("rate_limited" if is_429 else "llm_error", agent=_agent_from(tags), error=str(error)[:300])
 
     # -- Tools ---------------------------------------------------------------

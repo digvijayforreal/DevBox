@@ -11,3 +11,4 @@ wheels/
 # Secrets + runtime logs
 .env
 logs/
+.devbox/

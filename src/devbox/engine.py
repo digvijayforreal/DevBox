@@ -8,6 +8,9 @@ from typing import Callable
 from langchain.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.types import Command
 
+from langgraph.checkpoint.memory import InMemorySaver
+
+from devbox import llm
 from devbox.agents.graph import build_graph, text_of
 from devbox.callbacks import ActivityCallback, Sink
 from devbox.tools import ACTION_TOOL_NAMES, SHOW_TOOL_NAMES
@@ -19,8 +22,21 @@ AskFn = Callable[[dict], dict]
 class Session:
     def __init__(self, sink: Sink | None = None, model=None) -> None:
         self.callback = ActivityCallback(sink)
-        self.graph = build_graph(model)
+        self.checkpointer = InMemorySaver()  # shared across model switches -> chat survives
         self.thread_id = str(uuid.uuid4())
+        self.selection: llm.Selection | None = None
+        self._fixed_model = model  # tests pass a fake model
+        self.graph = build_graph(model, self.checkpointer) if model is not None else None
+
+    def ensure_graph(self) -> None:
+        """(Re)build the graph if the model selected in Settings changed."""
+        if self._fixed_model is not None:
+            return
+        sel = llm.resolve(llm.current())
+        if self.graph is None or sel != self.selection:
+            self.graph = build_graph(llm.make_model(sel), self.checkpointer)
+            self.selection = sel
+            self.callback.provider, self.callback.model = sel.provider, sel.model
 
     @property
     def config(self) -> dict:
@@ -32,9 +48,12 @@ class Session:
 
     @property
     def active_agent(self) -> str:
+        if self.graph is None:
+            return "triage"
         return self.graph.get_state(self.config).values.get("active_agent") or "triage"
 
     def run(self, text: str, ask: AskFn) -> list[dict]:
+        self.ensure_graph()
         before = len(self.graph.get_state(self.config).values.get("messages", []))
         self.callback.emit("user", text=text[:120])
         self.graph.invoke({"messages": [HumanMessage(content=text)], "handoff_count": 0}, self.config)

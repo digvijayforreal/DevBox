@@ -1,6 +1,6 @@
 # DevBox
 
-A multi-agent LangChain + Groq assistant for your Windows PC, running in your browser.
+A multi-agent LangChain assistant for your Windows PC (Groq or OpenAI), running in your browser.
 It finds what is filling your disk, what is slowing your PC, what is holding a port, and which
 dependencies are outdated or vulnerable. It shows you exact results and asks before changing anything.
 
@@ -8,7 +8,7 @@ dependencies are outdated or vulnerable. It shows you exact results and asks bef
 
 ```powershell
 uv sync                      # creates .venv and installs everything
-Copy-Item .env.example .env  # then put GROQ_API_KEY in .env
+Copy-Item .env.example .env  # then put GROQ_API_KEY and/or OPENAI_API_KEY in .env
 uv run devbox                # starts http://127.0.0.1:8765 and opens your browser
 ```
 
@@ -19,7 +19,11 @@ The browser opens with a one-time token in the URL. If you close the tab, use th
 - **Main screen:** chat (center) + live **Agent activity** panel (right; toggle with *Activity*).
   The top bar shows the four agents with the active one highlighted.
 - **Settings (⚙):**
-  - *Groq usage*: requests/day + tokens/minute left (from Groq headers), RPM, tokens, latency, 429s (live)
+  - *Model*: pick the provider (Groq / OpenAI) and any model your key can use (list loaded live
+    from the provider), or type a model ID. Switching keeps the conversation; the choice is saved
+    in `.devbox/model.json`. The current model also shows in the top bar.
+  - *Usage & limits*: per provider, limits left from the provider's headers plus local counts,
+    tokens, latency, 429s (live)
   - *Agents & tools*: which tools each agent has and their type
   - *Configuration*: model, limits, allowed / protected folders, log paths
   - *Action history*: every approved action
@@ -50,22 +54,22 @@ START ─(active_agent)─► triage ──transfer_to_*──► storage | proc
 | A: show & stop | `show_system_info`, `show_storage_report`, `show_process_table`, `show_vulnerable_dependencies`, `show_git_repos_with_uncommitted_changes` | `@tool(return_direct=True)`: the agent stops and the exact report is rendered as a card |
 | B: review & continue | `delete_files`, `kill_process`, `clear_cache`, `update_package`, `uninstall_program` | `interrupt(preview)` pauses the graph; the browser dialog resumes it with `Command(resume=...)` (approve / edit / reject) |
 
-## Groq rate limits
+## Models and rate limits
 
-Groq sends real rate-limit state in every response's headers, and DevBox reads them through an
-httpx response hook (`agents/graph.py` → `usage.record_headers`):
+`llm.py` builds the chat model (`ChatGroq` or `ChatOpenAI`) for the provider/model chosen in
+Settings. Both send real rate-limit state in response headers, read through an httpx response hook
+(`usage.record_headers`), but the request header means a different window:
 
-| Header | Meaning |
-|---|---|
-| `x-ratelimit-limit/remaining/reset-requests` | requests per **day** |
-| `x-ratelimit-limit/remaining/reset-tokens` | tokens per **minute** |
-| `retry-after` | seconds to wait (only on 429) |
+| Header | Groq | OpenAI |
+|---|---|---|
+| `x-ratelimit-*-requests` | requests per **day** | requests per **minute** |
+| `x-ratelimit-*-tokens` | tokens per **minute** | tokens per **minute** |
+| `retry-after` (on 429) | seconds | seconds |
 
-So "requests/day left" and "tokens/minute left" in Settings come from Groq itself. Requests/minute
-and tokens/day aren't in the headers, so DevBox counts its own calls against `GROQ_RPM_LIMIT` /
-`GROQ_TPD_LIMIT` in `.env`. Before each call DevBox waits if Groq said `retry-after`, if the local
-RPM limit is reached, or if the tokens left this minute are too low (⏳ in the activity panel).
-Limits apply to your whole Groq organization: https://console.groq.com/settings/limits
+Values not in the headers are counted locally against `.env` (Groq: `GROQ_RPM_LIMIT`,
+`GROQ_TPD_LIMIT`; OpenAI: optional `OPENAI_RPD_LIMIT`). Before each call DevBox waits if the
+provider said `retry-after`, if requests per minute are used up, or if the tokens left this minute
+are too low (⏳ in the activity panel). Limits apply to your whole Groq / OpenAI organization.
 
 ## Security
 
@@ -94,7 +98,8 @@ src/devbox/
 ├── static/             index.html · app.css · app.js (no build step)
 ├── engine.py           runs a turn, loops over interrupts
 ├── callbacks.py        LLM/tool events → activity panel + usage tracker
-├── usage.py            Groq rate-limit tracker (headers) + throttle
+├── llm.py              Groq / OpenAI models, selected model, live model list
+├── usage.py            per-provider rate-limit tracker (headers) + throttle
 ├── system_report.py    on-demand system details
 ├── config.py           .env settings, allowed/protected paths
 ├── safety.py           path + process guards, action log

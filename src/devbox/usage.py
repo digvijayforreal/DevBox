@@ -1,13 +1,16 @@
-"""Groq usage + rate-limit tracker.
+"""Per-provider usage + rate-limit tracking.
 
-Groq sends real rate-limit state in every response's headers:
-  x-ratelimit-limit-requests / -remaining-requests / -reset-requests  -> requests per DAY
-  x-ratelimit-limit-tokens   / -remaining-tokens   / -reset-tokens    -> tokens per MINUTE
-  retry-after (only on 429)
-DevBox captures those headers through an httpx response hook (see agents/graph.py),
-so "left" numbers come from Groq itself. RPM and tokens/day aren't in the headers,
-so those are counted locally against the limits in .env.
-Limits apply to the whole Groq organization, not to one key.
+Both providers send real rate-limit state in response headers (captured by an
+httpx response hook, see llm.py), but the headers mean different windows:
+
+  header                          Groq                 OpenAI
+  x-ratelimit-*-requests          requests per DAY     requests per MINUTE
+  x-ratelimit-*-tokens            tokens per MINUTE    tokens per MINUTE
+  retry-after (on 429)            seconds              seconds
+
+Anything not in the headers (Groq RPM, Groq tokens/day, OpenAI requests/day) is
+counted locally from DevBox's own calls. Limits apply to the whole Groq / OpenAI
+organization, so other apps using the same account aren't counted locally.
 """
 
 from __future__ import annotations
@@ -25,7 +28,7 @@ _DUR = re.compile(r"(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m(?!s))?(?:(\d+(?:\.\
 
 
 def parse_duration(text: str | None) -> float | None:
-    """'2m59.56s' -> 179.56, '7.66s' -> 7.66, '120ms' -> 0.12."""
+    """'2m59.56s' -> 179.56, '7.66s' -> 7.66, '120ms' -> 0.12, '6m0s' -> 360."""
     if not text:
         return None
     text = text.strip()
@@ -49,19 +52,35 @@ def _fmt_secs(secs: float | None) -> str:
     return f"{h}h {m}m" if h else f"{m}m {s}s" if m else f"{s}s"
 
 
+PROFILES = {
+    "groq": {
+        "label": "Groq", "requests_window": "day",
+        "rpm": lambda: config.GROQ_RPM_LIMIT, "rpd": lambda: config.GROQ_RPD_LIMIT,
+        "tpm": lambda: config.GROQ_TPM_LIMIT, "tpd": lambda: config.GROQ_TPD_LIMIT,
+        "plan": lambda: config.GROQ_PLAN, "limits_url": "https://console.groq.com/settings/limits",
+    },
+    "openai": {
+        "label": "OpenAI", "requests_window": "minute",
+        "rpm": lambda: config.OPENAI_RPM_LIMIT, "rpd": lambda: config.OPENAI_RPD_LIMIT,
+        "tpm": lambda: config.OPENAI_TPM_LIMIT, "tpd": lambda: 0,
+        "plan": lambda: config.OPENAI_TIER,
+        "limits_url": "https://platform.openai.com/settings/organization/limits",
+    },
+}
+
+
 class UsageTracker:
-    def __init__(self) -> None:
+    def __init__(self, provider: str) -> None:
+        self.provider = provider
+        self.p = PROFILES[provider]
         self.lock = threading.Lock()
         self.req_times: deque[float] = deque()
         self.session = {"requests": 0, "input_tokens": 0, "output_tokens": 0,
                         "total_tokens": 0, "errors_429": 0, "errors_other": 0, "throttle_waits": 0}
         self.latencies: deque[float] = deque(maxlen=50)
         self.last_error = ""
-        # Values from Groq headers (None until the first response).
-        self.h: dict[str, float | None] = {
-            "rpd_limit": None, "rpd_remaining": None, "rpd_reset_at": None,
-            "tpm_limit": None, "tpm_remaining": None, "tpm_reset_at": None,
-        }
+        self.h: dict[str, float | None] = {k: None for k in (
+            "req_limit", "req_remaining", "req_reset_at", "tok_limit", "tok_remaining", "tok_reset_at")}
         self.headers_seen_at: float | None = None
         self.retry_after_until = 0.0
         self.day, self.day_requests, self.day_tokens = date.today().isoformat(), 0, 0
@@ -70,8 +89,8 @@ class UsageTracker:
     # -- persistence (local day counters) ----------------------------------
     def _load(self) -> None:
         try:
-            data = json.loads(config.USAGE_FILE.read_text(encoding="utf-8"))
-            if data.get("day") == self.day and data.get("model") == config.GROQ_MODEL:
+            data = json.loads(config.usage_file(self.provider).read_text(encoding="utf-8"))
+            if data.get("day") == self.day:
                 self.day_requests = int(data.get("requests", 0))
                 self.day_tokens = int(data.get("tokens", 0))
         except (OSError, ValueError):
@@ -79,9 +98,8 @@ class UsageTracker:
 
     def _save(self) -> None:
         try:
-            config.USAGE_FILE.write_text(json.dumps({
-                "day": self.day, "model": config.GROQ_MODEL,
-                "requests": self.day_requests, "tokens": self.day_tokens}), encoding="utf-8")
+            config.usage_file(self.provider).write_text(json.dumps({
+                "day": self.day, "requests": self.day_requests, "tokens": self.day_tokens}), encoding="utf-8")
         except OSError:
             pass
 
@@ -94,6 +112,15 @@ class UsageTracker:
             self.day, self.day_requests, self.day_tokens = today, 0, 0
             self._save()
 
+    @property
+    def live(self) -> bool:
+        return self.headers_seen_at is not None
+
+    def _rpm_limit(self) -> int:
+        if self.p["requests_window"] == "minute" and self.h["req_limit"]:
+            return int(self.h["req_limit"])
+        return self.p["rpm"]()
+
     # -- fed by the httpx response hook --------------------------------------
     def record_headers(self, headers) -> None:
         def num(name: str) -> float | None:
@@ -105,16 +132,16 @@ class UsageTracker:
 
         now = time.time()
         with self.lock:
-            if headers.get("x-ratelimit-limit-tokens") is not None:
+            if headers.get("x-ratelimit-limit-requests") or headers.get("x-ratelimit-limit-tokens"):
                 rr = parse_duration(headers.get("x-ratelimit-reset-requests"))
                 tr = parse_duration(headers.get("x-ratelimit-reset-tokens"))
                 self.h.update({
-                    "rpd_limit": num("x-ratelimit-limit-requests"),
-                    "rpd_remaining": num("x-ratelimit-remaining-requests"),
-                    "rpd_reset_at": now + rr if rr is not None else None,
-                    "tpm_limit": num("x-ratelimit-limit-tokens"),
-                    "tpm_remaining": num("x-ratelimit-remaining-tokens"),
-                    "tpm_reset_at": now + tr if tr is not None else None,
+                    "req_limit": num("x-ratelimit-limit-requests"),
+                    "req_remaining": num("x-ratelimit-remaining-requests"),
+                    "req_reset_at": now + rr if rr is not None else None,
+                    "tok_limit": num("x-ratelimit-limit-tokens"),
+                    "tok_remaining": num("x-ratelimit-remaining-tokens"),
+                    "tok_reset_at": now + tr if tr is not None else None,
                 })
                 self.headers_seen_at = now
             ra = parse_duration(headers.get("retry-after"))
@@ -123,20 +150,23 @@ class UsageTracker:
 
     # -- hooks used by the callback handler ----------------------------------
     def wait_for_slot(self, on_wait=None, est_tokens: int = 1500) -> float:
-        """Block until a request should fit: Groq retry-after, TPM remaining, local RPM."""
+        """Block until a request should fit: retry-after, tokens/min left, requests left."""
         waited = 0.0
         while True:
             with self.lock:
                 self._roll()
-                now = time.time()
+                now, h = time.time(), self.h
                 delay, why = 0.0, ""
                 if self.retry_after_until > now:
-                    delay, why = self.retry_after_until - now, "Groq retry-after"
-                elif len(self.req_times) >= config.GROQ_RPM_LIMIT:
+                    delay, why = self.retry_after_until - now, "retry-after"
+                elif len(self.req_times) >= self._rpm_limit():
                     delay, why = 60 - (now - self.req_times[0]) + 0.2, "RPM"
-                elif (self.h["tpm_remaining"] is not None and self.h["tpm_reset_at"]
-                      and self.h["tpm_remaining"] < est_tokens and self.h["tpm_reset_at"] > now):
-                    delay, why = self.h["tpm_reset_at"] - now + 0.2, "TPM"
+                elif (self.p["requests_window"] == "minute" and h["req_remaining"] is not None
+                      and h["req_remaining"] < 1 and h["req_reset_at"] and h["req_reset_at"] > now):
+                    delay, why = h["req_reset_at"] - now + 0.2, "RPM"
+                elif (h["tok_remaining"] is not None and h["tok_reset_at"]
+                      and h["tok_remaining"] < est_tokens and h["tok_reset_at"] > now):
+                    delay, why = h["tok_reset_at"] - now + 0.2, "TPM"
                 if delay <= 0:
                     self.req_times.append(now)
                     return waited
@@ -147,7 +177,7 @@ class UsageTracker:
             step = min(max(delay, 0.2), 2.0)
             time.sleep(step)
             waited += step
-            if waited > 120:  # never hang forever; let Groq decide
+            if waited > 120:  # never hang forever; let the provider decide
                 with self.lock:
                     self.req_times.append(time.time())
                 return waited
@@ -167,45 +197,58 @@ class UsageTracker:
 
     def record_error(self, err: BaseException) -> bool:
         text = str(err)
-        is_429 = "429" in text or "rate_limit" in text.lower() or "rate limit" in text.lower()
+        low = text.lower()
+        is_429 = "429" in text or "rate_limit" in low or "rate limit" in low or "quota" in low
         with self.lock:
             self.session["errors_429" if is_429 else "errors_other"] += 1
             self.last_error = text[:300]
         return is_429
 
     # -- read model for the UI -----------------------------------------------
+    def _header_meter(self, label: str, limit_k: str, rem_k: str, reset_k: str, fallback: int) -> dict:
+        now, h = time.time(), self.h
+        if self.live and h[limit_k] is not None:
+            limit = int(h[limit_k])
+            remaining = h[rem_k]
+            if h[reset_k] and now >= h[reset_k]:
+                remaining = limit  # window has reset since the last response
+            used = limit - int(remaining if remaining is not None else limit)
+            reset = _fmt_secs(h[reset_k] - now) if h[reset_k] and h[reset_k] > now else "now"
+            return {"label": label, "used": used, "limit": limit, "source": "provider",
+                    "note": f"Resets in {reset}"}
+        return {"label": label, "used": 0, "limit": fallback, "source": "estimate",
+                "note": "Estimate until the first response arrives"}
+
     def snapshot(self) -> dict:
         with self.lock:
             self._roll()
-            now = time.time()
-            h = self.h
-            live = self.headers_seen_at is not None
-
-            def left_in(at):
-                return _fmt_secs(at - now) if at else "?"
-
-            # After the reset time passes, the window is full again.
-            tpm_remaining = h["tpm_remaining"]
-            if live and h["tpm_reset_at"] and now >= h["tpm_reset_at"]:
-                tpm_remaining = h["tpm_limit"]
+            p = self.p
+            if p["requests_window"] == "day":
+                meters = [
+                    self._header_meter("Requests per day (RPD)", "req_limit", "req_remaining", "req_reset_at", p["rpd"]()),
+                    self._header_meter("Tokens per minute (TPM)", "tok_limit", "tok_remaining", "tok_reset_at", p["tpm"]()),
+                    {"label": "Requests per minute (RPM)", "used": len(self.req_times), "limit": p["rpm"](),
+                     "source": "local", "note": "Rolling 60-second window"},
+                ]
+            else:
+                meters = [
+                    self._header_meter("Requests per minute (RPM)", "req_limit", "req_remaining", "req_reset_at", p["rpm"]()),
+                    self._header_meter("Tokens per minute (TPM)", "tok_limit", "tok_remaining", "tok_reset_at", p["tpm"]()),
+                ]
+            if p["tpd"]():
+                meters.append({"label": "Tokens per day (TPD)", "used": self.day_tokens, "limit": p["tpd"](),
+                               "source": "local", "note": "DevBox's own calls today"})
+            if p["requests_window"] == "minute" and p["rpd"]():
+                meters.append({"label": "Requests per day (RPD)", "used": self.day_requests, "limit": p["rpd"](),
+                               "source": "local", "note": "DevBox's own calls today"})
             lat = list(self.latencies)
             return {
-                "provider": "Groq", "model": config.GROQ_MODEL, "plan": config.GROQ_PLAN,
-                "key_set": bool(config.GROQ_API_KEY),
-                "live": live,
-                "headers_age": _fmt_secs(now - self.headers_seen_at) if live else None,
-                # From Groq headers (fallback: .env limits + local counts)
-                "rpd_limit": int(h["rpd_limit"]) if live and h["rpd_limit"] is not None else config.GROQ_RPD_LIMIT,
-                "rpd_remaining": int(h["rpd_remaining"]) if live and h["rpd_remaining"] is not None
-                else max(config.GROQ_RPD_LIMIT - self.day_requests, 0),
-                "rpd_reset_in": left_in(h["rpd_reset_at"]) if live else "?",
-                "tpm_limit": int(h["tpm_limit"]) if live and h["tpm_limit"] is not None else config.GROQ_TPM_LIMIT,
-                "tpm_remaining": int(tpm_remaining) if live and tpm_remaining is not None else config.GROQ_TPM_LIMIT,
-                "tpm_reset_in": left_in(h["tpm_reset_at"]) if live else "?",
-                # Local only
-                "rpm_used": len(self.req_times), "rpm_limit": config.GROQ_RPM_LIMIT,
-                "tpd_used": self.day_tokens, "tpd_limit": config.GROQ_TPD_LIMIT,
-                "day_requests": self.day_requests,
+                "provider": self.provider, "provider_label": p["label"], "plan": p["plan"](),
+                "limits_url": p["limits_url"],
+                "live": self.live,
+                "headers_age": _fmt_secs(time.time() - self.headers_seen_at) if self.live else None,
+                "meters": meters,
+                "day_requests": self.day_requests, "day_tokens": self.day_tokens,
                 "last_latency": lat[-1] if lat else 0.0,
                 "avg_latency": sum(lat) / len(lat) if lat else 0.0,
                 "last_error": self.last_error,
@@ -213,4 +256,8 @@ class UsageTracker:
             }
 
 
-usage = UsageTracker()
+trackers = {name: UsageTracker(name) for name in PROFILES}
+
+
+def tracker(provider: str) -> UsageTracker:
+    return trackers[provider]

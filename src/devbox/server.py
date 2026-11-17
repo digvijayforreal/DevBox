@@ -25,12 +25,12 @@ from typing import Any
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from devbox import config
+from devbox import config, llm
 from devbox.system_report import build_system_report
-from devbox.usage import usage
+from devbox.usage import tracker
 
 STATIC_DIR = Path(__file__).parent / "static"
 TOKEN = secrets.token_urlsafe(24)
@@ -94,6 +94,20 @@ class Hub:
         if entry and not entry[1].done():
             entry[1].set_result(decision)
 
+    # -- model selection -------------------------------------------------------
+    def set_model(self, provider: str, model: str) -> str | None:
+        with self.lock:
+            if self.busy:
+                return "Wait for the current request to finish before switching models."
+            try:
+                sel = llm.set_selection(provider, model)
+            except ValueError as e:
+                return str(e)
+        # The Session rebuilds its graph on the next turn and keeps the conversation.
+        self.send_all({"type": "model", "value": llm_state()})
+        self.add_item({"type": "note", "text": f"Model switched to {llm.PROVIDERS[sel.provider]['label']} · {sel.model}"})
+        return None
+
     # -- turns ---------------------------------------------------------------
     def start_turn(self, text: str) -> str | None:
         with self.lock:
@@ -143,7 +157,20 @@ class Hub:
             "busy": self.busy,
             "agent": self.agent,
             "pending": [{"id": k, "payload": v[0]} for k, v in self.pending.items()],
+            "model": llm_state(),
         }
+
+
+def llm_state() -> dict:
+    sel = llm.current()
+    return {
+        "provider": sel.provider,
+        "model": sel.model,
+        "providers": {name: {"label": p["label"], "key_set": bool(llm.api_key(name)),
+                             "env_key": p["env_key"], "keys_url": p["keys_url"],
+                             "default_model": llm.env_model(name)}
+                      for name, p in llm.PROVIDERS.items()},
+    }
 
 
 hub = Hub()
@@ -194,12 +221,47 @@ def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-store"})
 
 
+# Fully transparent tab icon. Also served at /favicon.ico so browsers drop any
+# icon they cached from another app that used this port before.
+_BLANK_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"/>'
+
+
+@app.get("/favicon.svg")
+@app.get("/favicon.ico")
+def favicon() -> Response:
+    return Response(_BLANK_ICON, media_type="image/svg+xml", headers={"Cache-Control": "no-cache"})
+
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.get("/api/usage", dependencies=[Depends(require_token)])
-def api_usage() -> dict:
-    return usage.snapshot()
+def api_usage(provider: str = "") -> dict:
+    sel = llm.current()
+    name = provider if provider in llm.PROVIDERS else sel.provider
+    snap = tracker(name).snapshot()
+    snap["model"] = sel.model if name == sel.provider else llm.env_model(name)
+    snap["key_set"] = bool(llm.api_key(name))
+    snap["active"] = name == sel.provider
+    return snap
+
+
+@app.get("/api/llm", dependencies=[Depends(require_token)])
+def api_llm() -> dict:
+    return llm_state()
+
+
+@app.get("/api/models", dependencies=[Depends(require_token)])
+def api_models(provider: str, refresh: bool = False) -> dict:
+    if provider not in llm.PROVIDERS:
+        raise HTTPException(status_code=400, detail="Unknown provider")
+    try:
+        return {"provider": provider, "models": llm.list_models(provider, refresh=refresh), "error": None}
+    except Exception as e:  # missing key, network, bad key: show it in the UI
+        msg = str(e)
+        if "401" in msg:
+            msg = "The API key was rejected (401). Check it in .env."
+        return {"provider": provider, "models": [], "error": msg[:300]}
 
 
 @app.get("/api/system", dependencies=[Depends(require_token)])
@@ -213,17 +275,18 @@ def api_config() -> dict:
     from devbox.callbacks import tool_kind
 
     return {
-        "provider": "Groq",
-        "model": config.GROQ_MODEL,
-        "plan": config.GROQ_PLAN,
-        "key_set": bool(config.GROQ_API_KEY),
-        "limits": {"rpm": config.GROQ_RPM_LIMIT, "rpd": config.GROQ_RPD_LIMIT,
-                   "tpm": config.GROQ_TPM_LIMIT, "tpd": config.GROQ_TPD_LIMIT},
+        "keys": {"groq": bool(config.GROQ_API_KEY), "openai": bool(config.OPENAI_API_KEY)},
+        "limits": {
+            "groq": {"rpm": config.GROQ_RPM_LIMIT, "rpd": config.GROQ_RPD_LIMIT,
+                     "tpm": config.GROQ_TPM_LIMIT, "tpd": config.GROQ_TPD_LIMIT},
+            "openai": {"rpm": config.OPENAI_RPM_LIMIT, "tpm": config.OPENAI_TPM_LIMIT,
+                       "rpd": config.OPENAI_RPD_LIMIT},
+        },
         "allowed_roots": [str(p) for p in config.ALLOWED_ROOTS],
         "protected_paths": [str(p) for p in config.PROTECTED_PATHS],
         "port": config.WEB_PORT,
         "logs": {"activity": str(config.ACTIVITY_LOG), "actions": str(config.ACTION_LOG),
-                 "usage": str(config.USAGE_FILE)},
+                 "state": str(config.STATE_DIR)},
         "agents": {a: [{"name": t.name, "kind": tool_kind(t.name)} for t in AGENT_TOOLS[a]]
                    + [{"name": f"transfer_to_{b}", "kind": "handoff"} for b in AGENTS if b != a]
                    for a in AGENTS},
@@ -278,6 +341,10 @@ async def ws_endpoint(ws: WebSocket) -> None:
                 err = hub.reset()
                 if err:
                     queue.put_nowait({"type": "toast", "level": "warn", "text": err})
+            elif kind == "set_model":
+                err = hub.set_model(str(msg.get("provider", "")), str(msg.get("model", "")))
+                queue.put_nowait({"type": "toast", "level": "warn" if err else "info",
+                                  "text": err or "Model updated. The next message uses it."})
     except WebSocketDisconnect:
         pass
     finally:

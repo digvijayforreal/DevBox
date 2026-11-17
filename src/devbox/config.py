@@ -41,6 +41,22 @@ GROQ_TPM_LIMIT = _env_int("GROQ_TPM_LIMIT", 8000)
 GROQ_TPD_LIMIT = _env_int("GROQ_TPD_LIMIT", 200_000)
 GROQ_PLAN = os.getenv("GROQ_PLAN", "Free")
 
+# --- OpenAI -----------------------------------------------------------------
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+# Empty = pick the first chat model from your account's /v1/models list.
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "")
+# OpenAI sends real per-minute limits (requests + tokens) in response headers.
+# These are only used before the first response. Requests/day is counted locally
+# (0 = no daily limit shown). Your limits: https://platform.openai.com/settings/organization/limits
+OPENAI_RPM_LIMIT = _env_int("OPENAI_RPM_LIMIT", 500)
+OPENAI_TPM_LIMIT = _env_int("OPENAI_TPM_LIMIT", 200_000)
+OPENAI_RPD_LIMIT = _env_int("OPENAI_RPD_LIMIT", 0)
+OPENAI_TIER = os.getenv("OPENAI_TIER", "Tier 1")
+
+# --- Active provider ----------------------------------------------------------
+# "groq" or "openai". The model picked in Settings overrides this (saved in .devbox/).
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "").strip().lower()
+
 # --- Filesystem safety --------------------------------------------------------
 ALLOWED_ROOTS: list[Path] = _env_paths(
     "DEVBOX_ALLOWED_ROOTS",
@@ -81,4 +97,10 @@ LOG_DIR = PROJECT_ROOT / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 ACTION_LOG = LOG_DIR / "devbox_actions.log"
 ACTIVITY_LOG = LOG_DIR / "devbox_activity.log"
-USAGE_FILE = LOG_DIR / "groq_usage.json"
+STATE_DIR = PROJECT_ROOT / ".devbox"  # app state (selected model, usage counters)
+STATE_DIR.mkdir(exist_ok=True)
+SELECTION_FILE = STATE_DIR / "model.json"
+
+
+def usage_file(provider: str):
+    return STATE_DIR / f"usage_{provider}.json"
