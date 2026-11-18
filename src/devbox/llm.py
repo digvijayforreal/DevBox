@@ -1,4 +1,4 @@
-"""LLM providers (Groq + OpenAI), the selected model, and model listing.
+"""LLM providers (Groq, OpenAI, NVIDIA), the selected model, and model listing.
 
 The selection (provider + model) is changed from Settings → Model and saved to
 .devbox/model.json so it survives restarts. API keys only ever come from .env.
@@ -22,6 +22,8 @@ PROVIDERS = {
              "keys_url": "https://console.groq.com/keys", "env_key": "GROQ_API_KEY"},
     "openai": {"label": "OpenAI", "base_url": "https://api.openai.com/v1",
                "keys_url": "https://platform.openai.com/api-keys", "env_key": "OPENAI_API_KEY"},
+    "nvidia": {"label": "NVIDIA", "base_url": config.NVIDIA_BASE_URL,
+               "keys_url": "https://build.nvidia.com", "env_key": "NVIDIA_API_KEY"},
 }
 
 # Models that can't be used for a tool-calling chat agent.
@@ -29,12 +31,20 @@ _SKIP = ("whisper", "tts", "orpheus", "guard", "safeguard", "embedding", "embed"
          "transcribe", "image", "dall-e", "moderation", "search", "sora", "davinci", "babbage", "instruct")
 
 
+# NVIDIA's catalog also lists retrieval, speech, vision and safety models.
+_NVIDIA_SKIP = ("rerank", "retriever", "embedqa", "nvclip", "clip", "parakeet", "fastpitch", "riva",
+                "canary", "vila", "neva", "kosmos", "deplot", "paligemma", "parse", "ocr", "detector",
+                "content-safety", "nemoguard", "reward", "cosmos", "flux", "stable-diffusion", "sdxl")
+
+
 def api_key(provider: str) -> str:
-    return config.GROQ_API_KEY if provider == "groq" else config.OPENAI_API_KEY
+    return {"groq": config.GROQ_API_KEY, "openai": config.OPENAI_API_KEY,
+            "nvidia": config.NVIDIA_API_KEY}.get(provider, "")
 
 
 def env_model(provider: str) -> str:
-    return config.GROQ_MODEL if provider == "groq" else config.OPENAI_MODEL
+    return {"groq": config.GROQ_MODEL, "openai": config.OPENAI_MODEL,
+            "nvidia": config.NVIDIA_MODEL}.get(provider, "")
 
 
 @dataclass
@@ -64,6 +74,8 @@ def list_models(provider: str, refresh: bool = False) -> list[str]:
     chat = sorted({i for i in ids if i and not any(s in i.lower() for s in _SKIP)})
     if provider == "openai":
         chat = [i for i in chat if i.startswith(("gpt-", "o1", "o3", "o4", "o5", "chatgpt-"))] or chat
+    if provider == "nvidia":
+        chat = [i for i in chat if not any(s in i.lower() for s in _NVIDIA_SKIP)] or chat
     _model_cache[provider] = (time.time(), chat)
     return chat
 
@@ -71,7 +83,7 @@ def list_models(provider: str, refresh: bool = False) -> list[str]:
 def _default_selection() -> Selection:
     pref = config.LLM_PROVIDER
     order = [pref] if pref in PROVIDERS else []
-    order += [p for p in ("groq", "openai") if p not in order]
+    order += [p for p in ("groq", "openai", "nvidia") if p not in order]
     for p in order:
         if api_key(p):
             return Selection(p, env_model(p))
@@ -143,9 +155,21 @@ def make_model(sel: Selection) -> BaseChatModel:
     if sel.provider == "groq":
         from langchain_groq import ChatGroq
 
-        return ChatGroq(model=sel.model, api_key=key, temperature=0.2, max_retries=2, http_client=http_client)
+        extra = {}
+        if "gpt-oss" in sel.model and config.REASONING_EFFORT:
+            # gpt-oss models think before answering; "low" keeps routing fast and avoids
+            # spending the whole output budget on reasoning (empty replies).
+            extra["reasoning_effort"] = config.REASONING_EFFORT
+        return ChatGroq(model=sel.model, api_key=key, temperature=0.2, max_retries=2,
+                        http_client=http_client, **extra)
 
     from langchain_openai import ChatOpenAI
+
+    if sel.provider == "nvidia":
+        # NVIDIA's API is OpenAI-compatible (Chat Completions only, not the Responses API).
+        return ChatOpenAI(model=sel.model, api_key=key, base_url=config.NVIDIA_BASE_URL,
+                          temperature=0.2, max_retries=2, timeout=180, use_responses_api=False,
+                          http_client=httpx.Client(timeout=180, event_hooks={"response": [capture_rate_limits]}))
 
     # No temperature: some OpenAI reasoning models reject it.
     return ChatOpenAI(model=sel.model, api_key=key, max_retries=2, http_client=http_client)

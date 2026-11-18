@@ -66,6 +66,14 @@ PROFILES = {
         "plan": lambda: config.OPENAI_TIER,
         "limits_url": "https://platform.openai.com/settings/organization/limits",
     },
+    # NVIDIA doesn't document rate-limit headers or token limits for the free tier;
+    # requests/minute is counted locally (header meters are used if they ever appear).
+    "nvidia": {
+        "label": "NVIDIA", "requests_window": "minute", "local_rpm": True,
+        "rpm": lambda: config.NVIDIA_RPM_LIMIT, "rpd": lambda: 0,
+        "tpm": lambda: 0, "tpd": lambda: 0,
+        "plan": lambda: config.NVIDIA_PLAN, "limits_url": "https://build.nvidia.com",
+    },
 }
 
 
@@ -223,7 +231,11 @@ class UsageTracker:
         with self.lock:
             self._roll()
             p = self.p
-            if p["requests_window"] == "day":
+            if p.get("local_rpm") and not self.live:
+                meters = [{"label": "Requests per minute (RPM)", "used": len(self.req_times), "limit": p["rpm"](),
+                           "source": "local", "note": "Rolling 60-second window (free tier ≈ 40 RPM; "
+                                                      "NVIDIA publishes no token limits)"}]
+            elif p["requests_window"] == "day":
                 meters = [
                     self._header_meter("Requests per day (RPD)", "req_limit", "req_remaining", "req_reset_at", p["rpd"]()),
                     self._header_meter("Tokens per minute (TPM)", "tok_limit", "tok_remaining", "tok_reset_at", p["tpm"]()),

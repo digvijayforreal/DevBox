@@ -53,6 +53,17 @@ OPENAI_TPM_LIMIT = _env_int("OPENAI_TPM_LIMIT", 200_000)
 OPENAI_RPD_LIMIT = _env_int("OPENAI_RPD_LIMIT", 0)
 OPENAI_TIER = os.getenv("OPENAI_TIER", "Tier 1")
 
+# Reasoning effort for reasoning models (Groq gpt-oss): low | medium | high | "" (provider default)
+REASONING_EFFORT = os.getenv("DEVBOX_REASONING_EFFORT", "low").strip().lower()
+
+# --- NVIDIA (build.nvidia.com / NIM, OpenAI-compatible) ---------------------
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
+NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "mistralai/mistral-large-4-1t-a52b")
+NVIDIA_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
+# Free tier is ~40 requests/minute (varies by model + traffic; no official token limits).
+NVIDIA_RPM_LIMIT = _env_int("NVIDIA_RPM_LIMIT", 40)
+NVIDIA_PLAN = os.getenv("NVIDIA_PLAN", "Free")
+
 # --- Active provider ----------------------------------------------------------
 # "groq" or "openai". The model picked in Settings overrides this (saved in .devbox/).
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "").strip().lower()
@@ -90,7 +101,7 @@ OPEN_BROWSER = os.getenv("DEVBOX_OPEN_BROWSER", "1") not in ("0", "false", "no")
 
 # --- Limits -------------------------------------------------------------------
 SCAN_TIME_LIMIT_S = _env_int("DEVBOX_SCAN_TIME_LIMIT", 25)
-LLM_TOOL_OUTPUT_CHARS = 4000  # cap on what normal tools send back to the LLM
+LLM_TOOL_OUTPUT_CHARS = 4000  # cap on tool output the LLM reads
 MAX_HANDOFFS_PER_TURN = 4
 
 LOG_DIR = PROJECT_ROOT / "logs"

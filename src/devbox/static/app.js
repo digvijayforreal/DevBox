@@ -225,7 +225,7 @@ function addItem(it) {
         h("pre", { class: "pre", text: it.text }));
       break;
     case "note":
-      node = h("div", { class: "note" }, h("span", {}, "🔁 ", it.text));
+      node = h("div", { class: "note" }, h("span", {}, `${it.icon || "🔁"} `, it.text));
       break;
     case "error":
       node = h("div", { class: "msg error" }, h("div", { class: "bubble", text: "⚠ " + it.text }));
@@ -494,10 +494,12 @@ async function renderConfig() {
       row("Active model", modelState ? `${modelState.providers[modelState.provider].label} · ${modelState.model || "(first available)"}` : "?"),
       row("GROQ_API_KEY", c.keys.groq ? "set in .env" : h("span", { class: "muted", text: "not set" })),
       row("OPENAI_API_KEY", c.keys.openai ? "set in .env" : h("span", { class: "muted", text: "not set" })),
+      row("NVIDIA_API_KEY", c.keys.nvidia ? "set in .env" : h("span", { class: "muted", text: "not set" })),
       row("Groq fallback limits (RPM / RPD / TPM / TPD)",
           `${fmt(c.limits.groq.rpm)} / ${fmt(c.limits.groq.rpd)} / ${fmt(c.limits.groq.tpm)} / ${fmt(c.limits.groq.tpd)}`),
       row("OpenAI fallback limits (RPM / TPM / RPD)",
           `${fmt(c.limits.openai.rpm)} / ${fmt(c.limits.openai.tpm)} / ${c.limits.openai.rpd ? fmt(c.limits.openai.rpd) : "not set"}`),
+      row("NVIDIA limit (RPM)", `${fmt(c.limits.nvidia.rpm)} (counted locally)`),
       row("LangSmith tracing", c.langsmith.enabled
         ? (c.langsmith.key_set
             ? h("span", {}, h("span", { class: "badge ok", text: "on" }), ` → ${c.langsmith.target} · ${c.langsmith.endpoint}`)

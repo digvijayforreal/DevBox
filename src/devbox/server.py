@@ -275,12 +275,14 @@ def api_config() -> dict:
     from devbox.callbacks import tool_kind
 
     return {
-        "keys": {"groq": bool(config.GROQ_API_KEY), "openai": bool(config.OPENAI_API_KEY)},
+        "keys": {"groq": bool(config.GROQ_API_KEY), "openai": bool(config.OPENAI_API_KEY),
+                 "nvidia": bool(config.NVIDIA_API_KEY)},
         "limits": {
             "groq": {"rpm": config.GROQ_RPM_LIMIT, "rpd": config.GROQ_RPD_LIMIT,
                      "tpm": config.GROQ_TPM_LIMIT, "tpd": config.GROQ_TPD_LIMIT},
             "openai": {"rpm": config.OPENAI_RPM_LIMIT, "tpm": config.OPENAI_TPM_LIMIT,
                        "rpd": config.OPENAI_RPD_LIMIT},
+            "nvidia": {"rpm": config.NVIDIA_RPM_LIMIT},
         },
         "langsmith": langsmith_state(),
         "allowed_roots": [str(p) for p in config.ALLOWED_ROOTS],
