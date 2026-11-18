@@ -37,6 +37,11 @@ def make_handoff_tool(source: str, target: str):
         count = int(runtime.state.get("handoff_count", 0) or 0)
         if count >= config.MAX_HANDOFFS_PER_TURN:
             return "Handoff limit reached for this turn. Answer the user directly with what you know."
+        if count > 0 and runtime.state.get("handoff_from") == target:
+            # Stop ping-pong: the target just handed this request to us in this same turn.
+            return (f"Do not hand back to {target}: it just handed this request to you. Handle it "
+                    "yourself with YOUR TOOLS. If it is blocked by the safety rules (protected or "
+                    "not-allowed path, protected process), tell the user briefly why it can't be done.")
 
         last_ai = next(m for m in reversed(runtime.state["messages"]) if isinstance(m, AIMessage))
         ack = ToolMessage(
@@ -51,6 +56,7 @@ def make_handoff_tool(source: str, target: str):
                 "active_agent": target,
                 "handoff_note": f"The {source} agent handed this conversation to you. Reason: {reason}",
                 "handoff_count": count + 1,
+                "handoff_from": source,
                 "messages": [last_ai, ack],
             },
         )

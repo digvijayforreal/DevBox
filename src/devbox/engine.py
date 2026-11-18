@@ -67,7 +67,8 @@ class Session:
         self.ensure_graph()
         before = len(self.graph.get_state(self.config).values.get("messages", []))
         self.callback.emit("user", text=text[:120])
-        self.graph.invoke({"messages": [HumanMessage(content=text)], "handoff_count": 0}, self.config)
+        self.graph.invoke({"messages": [HumanMessage(content=text)], "handoff_count": 0, "handoff_from": ""},
+                          self.config)
 
         while True:
             snap = self.graph.get_state(self.config)
@@ -97,9 +98,18 @@ def to_outputs(messages: list) -> list[dict]:
             if name in SHOW_TOOL_NAMES:
                 out.append({"type": "show", "tool": name, "text": text_of(m)})
             elif name.startswith("transfer_to_"):
-                out.append({"type": "handoff", "tool": name, "text": text_of(m)})
+                # Only real transfers; blocked handoffs (ping-pong / limit) stay in the activity log.
+                if text_of(m).startswith("Transferred"):
+                    out.append({"type": "handoff", "tool": name, "text": text_of(m)})
             elif name in ACTION_TOOL_NAMES:
-                out.append({"type": "action", "tool": name, "text": text_of(m)})
+                text = text_of(m)
+                if text.startswith("User REJECTED"):
+                    out.append({"type": "note", "icon": "✋", "tool": name,
+                                "text": f"Cancelled: you rejected {name}. Nothing was changed."})
+                else:
+                    out.append({"type": "action", "tool": name, "text": text})
+        elif isinstance(m, AIMessage) and (m.response_metadata or {}).get("devbox_route"):
+            out.append({"type": "handoff", "tool": "auto-route", "text": text_of(m)})
         elif isinstance(m, AIMessage) and not m.tool_calls:
             t = text_of(m).strip()
             if t:
