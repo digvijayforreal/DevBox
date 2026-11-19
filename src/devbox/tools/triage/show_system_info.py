@@ -1,6 +1,6 @@
 """show_system_info
 
-NORMAL (direct): return_direct=True, card to the user, turn ends.
+NORMAL (direct): card to the user; agents/direct.py decides when it ends the turn.
 Used by: triage, process agents.
 """
 
@@ -12,7 +12,7 @@ from langchain.tools import tool
 from devbox.core.system_report import build_system_report
 
 
-@tool(return_direct=True)
+@tool
 def show_system_info() -> str:
     """Show their system details: CPU usage (total + per core), RAM, swap, disks,
     machine info, uptime and top CPU processes. Use whenever the user asks about system

@@ -13,7 +13,7 @@ class AgentSpec:
     description: str  # used in the transfer_to_<name> tool that other agents see
     prompt: str       # role instructions (the shared rules in common.py are added in front)
     data_tools: list[BaseTool] = field(default_factory=list)    # NORMAL: result goes back to the LLM
-    direct_tools: list[BaseTool] = field(default_factory=list)  # NORMAL: return_direct, card to the user
+    direct_tools: list[BaseTool] = field(default_factory=list)  # NORMAL: card to the user (agents/direct.py)
     risk_tools: list[BaseTool] = field(default_factory=list)    # RISK: pause for the user's approval
 
     @property
@@ -21,8 +21,7 @@ class AgentSpec:
         return [*self.data_tools, *self.direct_tools, *self.risk_tools]
 
     def __post_init__(self) -> None:
-        # Keep the folder honest: direct tools must really be return_direct, the others must not.
-        for t in self.direct_tools:
-            assert t.return_direct, f"{self.name}: {t.name} is listed as direct but has no return_direct=True"
-        for t in (*self.data_tools, *self.risk_tools):
-            assert not t.return_direct, f"{self.name}: {t.name} has return_direct=True but is not listed as direct"
+        # The built-in flag would end the turn before our custom rule (agents/direct.py) runs.
+        for t in self.tools:
+            assert not t.return_direct, (f"{self.name}: {t.name} has return_direct=True; remove it, "
+                                         "agents/direct.py decides when a tool ends the turn")

@@ -1,6 +1,6 @@
 """find_large_files
 
-NORMAL (direct): return_direct=True, card to the user, turn ends.
+NORMAL (direct): card to the user; agents/direct.py decides when it ends the turn.
 Used by: storage agent.
 """
 
@@ -18,7 +18,7 @@ from devbox.tools.common import err as _err
 from devbox.core.utils import Deadline, human_size, note, report, table
 
 
-@tool(return_direct=True)
+@tool
 def find_large_files(folder: str, min_size_mb: int = 100, limit: int = 20) -> str:
     """Show the largest files (>= min_size_mb) inside an allowed folder.
 

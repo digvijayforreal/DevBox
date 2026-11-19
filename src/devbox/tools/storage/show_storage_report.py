@@ -1,6 +1,6 @@
 """show_storage_report
 
-NORMAL (direct): return_direct=True, card to the user, turn ends.
+NORMAL (direct): card to the user; agents/direct.py decides when it ends the turn.
 Used by: storage agent.
 """
 
@@ -17,7 +17,7 @@ from devbox.core.safety import SafetyError, resolve_in_allowed
 from devbox.core.utils import Deadline, dir_size, human_size, metrics, note, report, table
 
 
-@tool(return_direct=True)
+@tool
 def show_storage_report(folder: str = "") -> str:
     """Show a storage report: all drives + biggest items inside a folder.
 

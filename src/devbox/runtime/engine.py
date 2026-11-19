@@ -101,8 +101,12 @@ class Session:
 def to_outputs(messages: list) -> list[dict]:
     """Convert new graph messages into UI items."""
     out: list[dict] = []
-    for m in messages:
-        if isinstance(m, ToolMessage):
+    for i, m in enumerate(messages):
+        if isinstance(m, ToolMessage) and i == len(messages) - 1 and (m.name or "") not in (
+                SHOW_TOOL_NAMES | ACTION_TOOL_NAMES) and not (m.name or "").startswith("transfer_to_"):
+            # A data tool ended the turn directly (custom return-direct), e.g. "Port 8080 is free."
+            out.append({"type": "ai", "text": text_of(m), "agent": ""})
+        elif isinstance(m, ToolMessage):
             name = m.name or ""
             if name in SHOW_TOOL_NAMES:
                 out.append({"type": "show", "tool": name, "text": text_of(m)})

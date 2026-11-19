@@ -1,6 +1,6 @@
 """show_vulnerable_dependencies
 
-NORMAL (direct): return_direct=True, card to the user, turn ends.
+NORMAL (direct): card to the user; agents/direct.py decides when it ends the turn.
 Used by: dependency agent.
 """
 
@@ -55,7 +55,7 @@ def _node_audit(proj: Path) -> list[tuple]:
     return rows
 
 
-@tool(return_direct=True)
+@tool
 def show_vulnerable_dependencies(project_path: str) -> str:
     """Show known security vulnerabilities (CVEs) in a project's Python and/or npm dependencies.
 

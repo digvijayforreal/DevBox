@@ -1,6 +1,6 @@
 """get_disk_usage
 
-NORMAL (direct): return_direct=True, card to the user, turn ends.
+NORMAL (direct): card to the user; agents/direct.py decides when it ends the turn.
 Used by: storage agent.
 """
 
@@ -13,7 +13,7 @@ from langchain.tools import tool
 from devbox.core.utils import human_size, metrics, report
 
 
-@tool(return_direct=True)
+@tool
 def get_disk_usage() -> str:
     """Show used/free space for every drive on this PC."""
     items = []

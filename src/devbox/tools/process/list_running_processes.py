@@ -1,6 +1,6 @@
 """list_running_processes
 
-NORMAL (direct): return_direct=True, card to the user, turn ends.
+NORMAL (direct): card to the user; agents/direct.py decides when it ends the turn.
 Used by: process agent.
 """
 
@@ -13,7 +13,7 @@ from devbox.tools.process._snapshot import snapshot_processes as _snapshot_proce
 from devbox.core.utils import human_size, report, table
 
 
-@tool(return_direct=True)
+@tool
 def list_running_processes(sort_by: str = "memory", limit: int = 15) -> str:
     """Show the top running processes by 'memory' or 'cpu'.
 

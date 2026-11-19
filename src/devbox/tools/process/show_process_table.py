@@ -1,6 +1,6 @@
 """show_process_table
 
-NORMAL (direct): return_direct=True, card to the user, turn ends.
+NORMAL (direct): card to the user; agents/direct.py decides when it ends the turn.
 Used by: process agent.
 """
 
@@ -14,7 +14,7 @@ from devbox.tools.process._snapshot import snapshot_processes as _snapshot_proce
 from devbox.core.utils import human_size, metrics, report, table
 
 
-@tool(return_direct=True)
+@tool
 def show_process_table(sort_by: str = "memory", limit: int = 15) -> str:
     """Show a table of top processes by 'memory' or 'cpu'.
 

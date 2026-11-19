@@ -1,6 +1,6 @@
 """scan_outdated_packages
 
-NORMAL (direct): return_direct=True, card to the user, turn ends.
+NORMAL (direct): card to the user; agents/direct.py decides when it ends the turn.
 Used by: dependency agent.
 """
 
@@ -15,7 +15,7 @@ from devbox.tools.common import err as _err
 from devbox.core.utils import note, report, run_cmd, table, truncate
 
 
-@tool(return_direct=True)
+@tool
 def scan_outdated_packages(project_path: str, ecosystem: str = "python") -> str:
     """Show the outdated packages of a project.
 

@@ -3,7 +3,7 @@
     START ──route by active_agent──► triage | storage | process | dependency
        each agent node = create_agent(...) with its own tools + transfer_to_* tools
        handoff  : tool returns Command(graph=PARENT, goto=<agent>)   -> jump to agent
-       type A   : show_* tool has return_direct=True                -> agent stops, table to user
+       type A   : direct.should_end() says stop after a tool        -> agent stops, card/answer to user
        type B   : action tool calls interrupt(preview)              -> graph pauses for approval
        finished : node returns Command(goto=END)
 """
@@ -23,7 +23,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 from typing_extensions import NotRequired
 
-from devbox.agents import general
+from devbox.agents import direct, general
 from devbox.core import config
 from devbox.prompts.common import COMMON
 from devbox.agents.handoff import handoff_tools_for
@@ -32,6 +32,7 @@ from devbox.agents.registry import DIRECT_TOOL_NAMES as SHOW_TOOL_NAMES
 from devbox.core.utils import truncate
 
 PROMPTS = {name: COMMON + spec.prompt for name, spec in BY_NAME.items()}
+direct.DIRECT_TOOLS.update(SHOW_TOOL_NAMES)  # the custom return-direct rule knows which tools show cards
 
 
 class DevBoxState(AgentState):
@@ -140,6 +141,10 @@ def build_context(messages: list, max_turns: int = MAX_TURNS) -> list:
                 add_ai(summarize_report(text_of(m), full=(i == last_report)))
             elif m.name in ACTION_TOOL_NAMES:
                 add_ai(f"[{m.name} result] {truncate(text_of(m), 300)}")
+            elif not (m.name or "").startswith("transfer_to_") and (
+                    i + 1 == len(messages) or isinstance(messages[i + 1], HumanMessage)):
+                # A data tool that ended the turn directly (e.g. "Port 8080 is free."): keep it as the answer.
+                add_ai(f"[{m.name} answered the user] {truncate(text_of(m), 300)}")
     while out and not isinstance(out[0], HumanMessage):
         out.pop(0)
     return out
@@ -225,7 +230,7 @@ def build_graph(model: BaseChatModel, checkpointer=None):
         name: create_agent(
             model,
             tools=[*AGENT_TOOLS[name], *handoff_tools_for(name, AGENTS)],
-            middleware=[_prompt_middleware(name)],
+            middleware=[_prompt_middleware(name), direct.custom_return_direct],
             state_schema=DevBoxState,
             name=name,
         )

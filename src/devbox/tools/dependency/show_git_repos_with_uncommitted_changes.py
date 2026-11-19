@@ -1,6 +1,6 @@
 """show_git_repos_with_uncommitted_changes
 
-NORMAL (direct): return_direct=True, card to the user, turn ends.
+NORMAL (direct): card to the user; agents/direct.py decides when it ends the turn.
 Used by: dependency, storage agents.
 """
 
@@ -16,7 +16,7 @@ from devbox.core.safety import SafetyError, resolve_in_allowed
 from devbox.core.utils import Deadline, note, report, run_cmd, table
 
 
-@tool(return_direct=True)
+@tool
 def show_git_repos_with_uncommitted_changes(folder: str, max_depth: int = 4) -> str:
     """Show every git repo under a folder that has uncommitted or unpushed work. Use before deleting projects.
 

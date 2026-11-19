@@ -50,8 +50,8 @@ START ─(active_agent)─► triage ──transfer_to_*──► storage | proc
 
 | Type | Tools | Mechanism |
 |---|---|---|
-| Normal | `get_system_info`, `get_disk_usage`, `find_large_files`, `find_node_modules`, `list_running_processes`, `check_port_in_use`, `scan_outdated_packages`, `search_installed_programs` | result goes back to the LLM |
-| A: show & stop | `show_system_info`, `show_storage_report`, `show_process_table`, `show_vulnerable_dependencies`, `show_git_repos_with_uncommitted_changes` | `@tool(return_direct=True)`: the agent stops and the exact report is rendered as a card |
+| Data | `get_system_info`, `find_process`, `check_port_in_use`, `search_installed_programs` | result goes back to the LLM (simple answers like "Port 8080 is free." end the turn directly) |
+| A: direct (card) | `get_disk_usage`, `find_large_files`, `find_node_modules`, `list_running_processes`, `scan_outdated_packages`, all `show_*` tools | custom return-direct (`agents/direct.py`): `should_end()` ends the turn with the card, unless the tool returned an error or the user asked for a next step |
 | B: review & continue | `delete_files`, `kill_process`, `clear_cache`, `update_package`, `uninstall_program` | `interrupt(preview)` pauses the graph; the browser dialog resumes it with `Command(resume=...)` (approve / edit / reject) |
 
 ## Models and rate limits
