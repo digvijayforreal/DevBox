@@ -57,7 +57,7 @@ def _node_audit(proj: Path) -> list[tuple]:
 
 @tool(return_direct=True)
 def show_vulnerable_dependencies(project_path: str) -> str:
-    """Show the user known security vulnerabilities (CVEs) in a project's Python and/or npm dependencies.
+    """Show known security vulnerabilities (CVEs) in a project's Python and/or npm dependencies.
 
     Args:
         project_path: Absolute path of the project folder.

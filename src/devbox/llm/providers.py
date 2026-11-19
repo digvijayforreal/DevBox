@@ -172,4 +172,7 @@ def make_model(sel: Selection) -> BaseChatModel:
                           http_client=httpx.Client(timeout=180, event_hooks={"response": [capture_rate_limits]}))
 
     # No temperature: some OpenAI reasoning models reject it.
-    return ChatOpenAI(model=sel.model, api_key=key, max_retries=2, http_client=http_client)
+    # Always use the Responses API: newer models (e.g. gpt-5.6-luna) reject tool calls with
+    # reasoning on /v1/chat/completions ("use /v1/responses").
+    return ChatOpenAI(model=sel.model, api_key=key, max_retries=2, http_client=http_client,
+                      use_responses_api=True)

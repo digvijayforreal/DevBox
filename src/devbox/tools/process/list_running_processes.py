@@ -15,8 +15,7 @@ from devbox.core.utils import human_size, report, table
 
 @tool(return_direct=True)
 def list_running_processes(sort_by: str = "memory", limit: int = 15) -> str:
-    """Show the user the top running processes by 'memory' or 'cpu'.
-    The result is shown directly to the user and ends your turn.
+    """Show the top running processes by 'memory' or 'cpu'.
 
     Args:
         sort_by: 'memory' or 'cpu'.

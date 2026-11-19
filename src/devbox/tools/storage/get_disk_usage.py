@@ -15,8 +15,7 @@ from devbox.core.utils import human_size, metrics, report
 
 @tool(return_direct=True)
 def get_disk_usage() -> str:
-    """Show the user used/free space for every drive on this PC. The result is shown
-    directly to the user and ends your turn."""
+    """Show used/free space for every drive on this PC."""
     items = []
     for part in psutil.disk_partitions(all=False):
         try:

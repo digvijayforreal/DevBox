@@ -68,6 +68,14 @@ class Session:
         self.ensure_graph()
         before = len(self.graph.get_state(self.config).values.get("messages", []))
         self.callback.emit("user", text=text[:120])
+        self.callback.turn = {"input_tokens": 0, "output_tokens": 0, "llm_calls": 0}
+        try:
+            return self._run(text, ask, before)
+        finally:
+            t = self.callback.turn  # token cost of this whole message (all LLM calls, incl. after approvals)
+            self.callback.emit("turn_total", **t, total_tokens=t["input_tokens"] + t["output_tokens"])
+
+    def _run(self, text: str, ask: AskFn, before: int) -> list[dict]:
         self.graph.invoke({"messages": [HumanMessage(content=text)], "handoff_count": 0, "handoff_from": ""},
                           self.config)
 

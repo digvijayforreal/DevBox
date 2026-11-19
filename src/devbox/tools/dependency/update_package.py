@@ -17,7 +17,7 @@ from devbox.core.utils import run_cmd, truncate
 
 @tool
 def update_package(package: str, project_path: str, ecosystem: str = "python") -> str:
-    """Upgrade one package inside a project. REQUIRES user approval.
+    """Upgrade one package inside a project.
 
     Args:
         package: Package name, e.g. 'requests' or 'react'.

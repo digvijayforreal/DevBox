@@ -14,7 +14,7 @@ from devbox.core.system_report import build_system_report
 
 @tool(return_direct=True)
 def show_system_info() -> str:
-    """Show the user their system details: CPU usage (total + per core), RAM, swap, disks,
+    """Show their system details: CPU usage (total + per core), RAM, swap, disks,
     machine info, uptime and top CPU processes. Use whenever the user asks about system
     details, specs, CPU usage, RAM usage or 'how is my PC doing'."""
     return build_system_report()

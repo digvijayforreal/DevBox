@@ -51,7 +51,7 @@ def _clean_temp(temp: Path, older_than_s: int = 86400) -> tuple[int, int]:
 
 @tool
 def clear_cache(targets: list[str]) -> str:
-    """Clear developer caches. REQUIRES user approval.
+    """Clear developer caches.
 
     Args:
         targets: Any of 'pip', 'npm', 'uv', 'temp'.
