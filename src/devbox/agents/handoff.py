@@ -15,14 +15,8 @@ from langchain.messages import AIMessage, ToolMessage
 from langchain.tools import ToolRuntime, tool
 from langgraph.types import Command
 
-from devbox import config
-
-AGENT_DESCRIPTIONS = {
-    "triage": "the TRIAGE agent (general questions / unclear requests)",
-    "storage": "the STORAGE agent (disk space, large files, node_modules, caches, deleting files)",
-    "process": "the PROCESS agent (CPU/RAM, running processes, ports, killing processes)",
-    "dependency": "the DEPENDENCY agent (outdated packages, vulnerabilities, git repos, updates, uninstalling programs)",
-}
+from devbox.core import config
+from devbox.agents.registry import AGENT_DESCRIPTIONS
 
 
 def make_handoff_tool(source: str, target: str):

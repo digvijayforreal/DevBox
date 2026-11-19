@@ -7,7 +7,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]  # src/devbox/core/config.py -> project folder
 load_dotenv(PROJECT_ROOT / ".env")
 
 HOME = Path.home()

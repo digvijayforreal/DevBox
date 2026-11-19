@@ -8,7 +8,7 @@ from pathlib import Path
 
 import psutil
 
-from devbox import config
+from devbox.core import config
 
 
 class SafetyError(Exception):

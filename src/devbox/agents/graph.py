@@ -23,27 +23,14 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 from typing_extensions import NotRequired
 
-from devbox import config
+from devbox.core import config
+from devbox.prompts.common import COMMON
 from devbox.agents.handoff import handoff_tools_for
-from devbox.agents.prompts import PROMPTS
-from devbox.tools import ACTION_TOOL_NAMES, SHOW_TOOL_NAMES
-from devbox.tools import actions as A
-from devbox.tools import normal as N
-from devbox.tools import show as S
-from devbox.utils import truncate
+from devbox.agents.registry import ACTION_TOOL_NAMES, AGENT_TOOLS, AGENTS, BY_NAME
+from devbox.agents.registry import DIRECT_TOOL_NAMES as SHOW_TOOL_NAMES
+from devbox.core.utils import truncate
 
-AGENTS = ["triage", "storage", "process", "dependency"]
-
-AGENT_TOOLS = {
-    "triage": [N.get_system_info, S.show_system_info],
-    "storage": [N.get_disk_usage, N.find_large_files, N.find_node_modules, S.show_storage_report,
-                S.show_git_repos_with_uncommitted_changes, A.delete_files, A.clear_cache],
-    "process": [N.list_running_processes, N.find_process, N.check_port_in_use, N.get_system_info,
-                S.show_system_info, S.show_process_table, A.kill_process],
-    "dependency": [N.scan_outdated_packages, N.search_installed_programs,
-                   S.show_vulnerable_dependencies, S.show_git_repos_with_uncommitted_changes,
-                   A.update_package, A.uninstall_program],
-}
+PROMPTS = {name: COMMON + spec.prompt for name, spec in BY_NAME.items()}
 
 
 class DevBoxState(AgentState):

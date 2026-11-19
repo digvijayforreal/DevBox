@@ -94,15 +94,43 @@ DevBox can delete files and kill processes, so the web server is locked down:
 
 ```
 src/devbox/
-├── server.py           FastAPI app: static UI, REST (/api/*), WebSocket (/ws), auth
-├── static/             index.html · app.css · app.js (no build step)
-├── engine.py           runs a turn, loops over interrupts
-├── callbacks.py        LLM/tool events → activity panel + usage tracker
-├── llm.py              Groq / OpenAI models, selected model, live model list
-├── usage.py            per-provider rate-limit tracker (headers) + throttle
-├── system_report.py    on-demand system details
-├── config.py           .env settings, allowed/protected paths
-├── safety.py           path + process guards, action log
-├── agents/             graph.py · handoff.py · prompts.py
-└── tools/              normal.py · show.py (A) · actions.py (B)
+├── __init__.py · __main__.py   entry point (uv run devbox)
+├── web/
+│   ├── server.py       FastAPI app: static UI, REST (/api/*), WebSocket (/ws), auth
+│   └── static/         index.html · app.css · app.js (no build step)
+├── runtime/
+│   ├── engine.py       runs a turn, loops over interrupts
+│   └── callbacks.py    LLM/tool events → activity panel + usage tracker
+├── llm/
+│   ├── providers.py    Groq / OpenAI / NVIDIA models, selected model, live model list
+│   └── usage.py        per-provider rate-limit tracker (headers) + throttle
+├── core/
+│   ├── config.py       .env settings, allowed/protected paths
+│   ├── safety.py       path + process guards, action log
+│   ├── utils.py        sizes, folder walking, safe subprocess, report builders
+│   └── system_report.py  on-demand system details
+├── agents/
+│   ├── graph.py        LangGraph graph: agent nodes, routing, memory, safety nets
+│   ├── handoff.py      transfer_to_* tools
+│   ├── registry.py     list of agents + tool type sets (direct / data / risk)
+│   ├── base.py         AgentSpec (name, description, prompt, tools by type)
+│   └── triage.py · storage.py · process.py · dependency.py   one AgentSpec each
+├── prompts/
+│   ├── common.py       rules shared by every agent
+│   └── triage.py · storage.py · process.py · dependency.py   PROMPT per agent
+└── tools/
+    ├── approval.py     shared ask_human() pause for RISK tools
+    ├── common.py       small shared helpers
+    ├── triage/         get_system_info.py · show_system_info.py
+    ├── storage/        get_disk_usage.py · find_large_files.py · find_node_modules.py
+    │                   show_storage_report.py · delete_files.py · clear_cache.py
+    ├── process/        find_process.py · check_port_in_use.py · list_running_processes.py
+    │                   show_process_table.py · kill_process.py · _snapshot.py (helper)
+    └── dependency/     search_installed_programs.py · scan_outdated_packages.py
+                        show_vulnerable_dependencies.py · show_git_repos_with_uncommitted_changes.py
+                        update_package.py · uninstall_program.py
 ```
+
+One file per tool; the docstring at the top of each says its type (NORMAL data, NORMAL
+direct, RISK) and which agents use it. To add an agent: `prompts/<name>.py`,
+`tools/<name>/<tool>.py`, `agents/<name>.py`, then add it to `agents/registry.py`.

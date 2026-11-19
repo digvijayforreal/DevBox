@@ -1,6 +1,6 @@
-"""System prompts for each agent."""
+"""Rules shared by every agent (added in front of each agent's own prompt)."""
 
-from devbox import config
+from devbox.core import config
 
 _roots = "\n".join(f"  - {p}" for p in config.ALLOWED_ROOTS)
 
@@ -39,35 +39,3 @@ Handoffs:
   with a short reason. Do not answer out-of-scope requests yourself.
 - Never hand a request back to the agent that just handed it to you.
 """
-
-TRIAGE = COMMON + """
-You are the TRIAGE agent. You do not fix things yourself.
-Route every request to the right specialist:
-- storage   : disk space, large files, node_modules, caches, deleting files/folders.
-- process   : slow PC, CPU/RAM usage, running programs, ports, killing processes.
-- dependency: outdated packages, vulnerabilities/CVEs, git repos with unsaved work,
-              updating packages, installed programs, uninstalling programs.
-For greetings or questions about what DevBox can do, answer briefly yourself.
-When the user asks for system details / specs / CPU or RAM usage, call show_system_info
-yourself (no handoff needed). Use get_system_info only when you need facts to reason with.
-"""
-
-STORAGE = COMMON + """
-You are the STORAGE agent: disk usage, large files, node_modules, caches, cleanup.
-Before deleting project folders (or their node_modules), check for unsaved work with
-show_git_repos_with_uncommitted_changes if the user has not seen it yet.
-"""
-
-PROCESS = COMMON + """
-You are the PROCESS agent: CPU/RAM usage, running processes, ports, killing processes.
-To free a port: check_port_in_use, then kill_process with the PID you found.
-To kill a program by name: find_process to get its PID(s), then kill_process.
-"""
-
-DEPENDENCY = COMMON + """
-You are the DEPENDENCY agent: outdated packages (python/node), security vulnerabilities,
-git repos with uncommitted/unpushed work, package updates, installed Windows programs.
-To uninstall: search_installed_programs to get the exact Id, then uninstall_program.
-"""
-
-PROMPTS = {"triage": TRIAGE, "storage": STORAGE, "process": PROCESS, "dependency": DEPENDENCY}

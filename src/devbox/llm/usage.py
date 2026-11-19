@@ -22,7 +22,7 @@ import time
 from collections import deque
 from datetime import date
 
-from devbox import config
+from devbox.core import config
 
 _DUR = re.compile(r"(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m(?!s))?(?:(\d+(?:\.\d+)?)s)?(?:(\d+(?:\.\d+)?)ms)?")
 

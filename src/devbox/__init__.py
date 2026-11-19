@@ -2,6 +2,6 @@
 
 
 def main() -> None:
-    from devbox.server import main as serve
+    from devbox.web.server import main as serve
 
     serve()

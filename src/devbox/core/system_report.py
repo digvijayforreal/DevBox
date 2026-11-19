@@ -13,7 +13,7 @@ from datetime import datetime
 
 import psutil
 
-from devbox.utils import human_size, metrics, report, table
+from devbox.core.utils import human_size, metrics, report, table
 
 _ME = psutil.Process()
 
