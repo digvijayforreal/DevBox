@@ -326,6 +326,8 @@ function fmtEvent(e) {
     case "approval_approve": return { icon: "👍", cls: "approval", parts: [B("approved "), e.tool] };
     case "approval_edit": return { icon: "✏️", cls: "approval", parts: [B("edited & approved "), e.tool] };
     case "approval_reject": return { icon: "👎", cls: "approval", parts: [B("rejected "), e.tool] };
+    case "turn_total": return { icon: "🧾", cls: "total", parts: [B(`Message cost: ${fmt(e.total_tokens)} tokens`),
+      M(` · in ${fmt(e.input_tokens)} · out ${fmt(e.output_tokens)} · ${e.llm_calls} LLM call${e.llm_calls === 1 ? "" : "s"}`)] };
     case "throttle": return { icon: "⏳", parts: [`${e.reason} limit near, waiting ${e.seconds}s`] };
     case "rate_limited": return { icon: "🚫", cls: "error", parts: [B("429 rate limit: "), e.error] };
     case "llm_error": return { icon: "❌", cls: "error", parts: [B("LLM error: "), e.error] };

@@ -19,7 +19,7 @@ from devbox.core.utils import human_size
 
 @tool
 def kill_process(pid: int) -> str:
-    """Terminate a process by PID. REQUIRES user approval.
+    """Terminate a process by PID.
 
     Args:
         pid: Process ID.

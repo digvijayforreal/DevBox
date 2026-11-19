@@ -34,7 +34,7 @@ def _preview_delete(paths: list[str]) -> tuple[list[Path], list[str], list[str],
 
 @tool
 def delete_files(paths: list[str]) -> str:
-    """Move files/folders to the Recycle Bin (recoverable). REQUIRES user approval.
+    """Move files/folders to the Recycle Bin (recoverable).
 
     Args:
         paths: Absolute paths of files or folders to delete.

@@ -48,6 +48,7 @@ class ActivityCallback(BaseCallbackHandler):
         self.sink = sink
         self.starts: dict[UUID, float] = {}
         self.names: dict[UUID, str] = {}
+        self.turn = {"input_tokens": 0, "output_tokens": 0, "llm_calls": 0}  # totals for the current message
         from devbox import llm
 
         sel = llm.current()  # Session updates these whenever the model is (re)built
@@ -92,6 +93,9 @@ class ActivityCallback(BaseCallbackHandler):
         except (IndexError, AttributeError):
             pass
         self.usage.record_success(in_t, out_t, latency)
+        self.turn["input_tokens"] += in_t
+        self.turn["output_tokens"] += out_t
+        self.turn["llm_calls"] += 1
         self.emit("llm_end", agent=_agent_from(tags), latency=round(latency, 2),
                   input_tokens=in_t, output_tokens=out_t, tool_calls=calls)
 

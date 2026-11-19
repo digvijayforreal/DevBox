@@ -20,8 +20,7 @@ from devbox.core.utils import Deadline, human_size, note, report, table
 
 @tool(return_direct=True)
 def find_large_files(folder: str, min_size_mb: int = 100, limit: int = 20) -> str:
-    """Show the user the largest files (>= min_size_mb) inside an allowed folder.
-    The result is shown directly to the user and ends your turn.
+    """Show the largest files (>= min_size_mb) inside an allowed folder.
 
     Args:
         folder: Absolute path to scan, e.g. C:\\Users\\me\\Downloads.

@@ -19,7 +19,7 @@ from devbox.core.utils import Deadline, dir_size, human_size, metrics, note, rep
 
 @tool(return_direct=True)
 def show_storage_report(folder: str = "") -> str:
-    """Show the user a storage report: all drives + biggest items inside a folder.
+    """Show a storage report: all drives + biggest items inside a folder.
 
     Args:
         folder: Folder whose children are measured. Empty = all allowed folders.

@@ -23,6 +23,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 from typing_extensions import NotRequired
 
+from devbox.agents import general
 from devbox.core import config
 from devbox.prompts.common import COMMON
 from devbox.agents.handoff import handoff_tools_for
@@ -54,7 +55,7 @@ def text_of(msg: Any) -> str:
     return "".join(parts)
 
 
-MAX_TURNS = 6            # user turns of history sent to the LLM
+MAX_TURNS = 3            # user turns of history sent to the LLM
 RECENT_REPORT_ROWS = 12  # rows kept from the most recent report (for follow-ups like "delete the biggest one")
 
 
@@ -235,12 +236,13 @@ def build_graph(model: BaseChatModel, checkpointer=None):
         agent = agents[name]
 
         def node(state: DevBoxState) -> Command:
-            ctx = build_context(state["messages"])
+            # Triage only routes, so it gets just the latest message; specialists get recent history.
+            ctx = build_context(state["messages"], max_turns=1 if name == "triage" else MAX_TURNS)
             note = state.get("handoff_note", "")
 
-            def run(handoff_note: str):
+            def run(handoff_note: str, messages: list | None = None):
                 return agent.invoke(
-                    {"messages": ctx,
+                    {"messages": ctx if messages is None else messages,
                      "handoff_note": handoff_note,
                      "handoff_count": state.get("handoff_count", 0),
                      "handoff_from": state.get("handoff_from", ""),
@@ -281,7 +283,10 @@ def build_graph(model: BaseChatModel, checkpointer=None):
                 # return nothing. Retry once with a nudge, then fall back to a clear message.
                 nudge = ("Your previous reply was empty. Either call ONE tool from YOUR TOOLS, "
                          "call transfer_to_<agent>, or answer in one or two short sentences.")
-                result = run(f"{note}\n{nudge}".strip())
+                # Continue from where it stopped: keep the tool calls/results it already has
+                # (e.g. check_port_in_use) and drop only the empty reply, so no tool runs twice.
+                progress = result["messages"][:-1] if result["messages"] else ctx
+                result = run(f"{note}\n{nudge}".strip(), messages=progress)
                 if _is_empty_reply(result["messages"][len(ctx):]):
                     result["messages"] = result["messages"][:-1] + [AIMessage(
                         content="I couldn't produce an answer for that. Please rephrase, or pick a "
@@ -312,5 +317,13 @@ def build_graph(model: BaseChatModel, checkpointer=None):
     builder = StateGraph(DevBoxState)
     for name in AGENTS:
         builder.add_node(name, make_node(name), destinations=tuple(a for a in AGENTS if a != name) + (END,))
-    builder.add_conditional_edges(START, lambda s: s.get("active_agent") or "triage", AGENTS)
+    # Small talk is routed by code to a tiny general agent (no tools, no rules) to save tokens.
+    builder.add_node(general.NAME, general.make_general_node(model), destinations=(END,))
+
+    def route_start(s: DevBoxState) -> str:
+        if general.is_small_talk(general.last_user_text(s)):
+            return general.NAME
+        return s.get("active_agent") or "triage"
+
+    builder.add_conditional_edges(START, route_start, [*AGENTS, general.NAME])
     return builder.compile(checkpointer=checkpointer or InMemorySaver())

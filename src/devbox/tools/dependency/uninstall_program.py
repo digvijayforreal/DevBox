@@ -17,7 +17,7 @@ from devbox.core.utils import run_cmd, truncate
 
 @tool
 def uninstall_program(package_id: str) -> str:
-    """Uninstall a Windows program by its exact winget Id (get it from search_installed_programs). REQUIRES user approval.
+    """Uninstall a Windows program by its exact winget Id (get it from search_installed_programs).
 
     Args:
         package_id: Exact winget package Id, e.g. 'Zoom.Zoom'.

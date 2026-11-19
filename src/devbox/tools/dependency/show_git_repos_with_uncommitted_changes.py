@@ -18,7 +18,7 @@ from devbox.core.utils import Deadline, note, report, run_cmd, table
 
 @tool(return_direct=True)
 def show_git_repos_with_uncommitted_changes(folder: str, max_depth: int = 4) -> str:
-    """Show the user every git repo under a folder that has uncommitted or unpushed work. Use before deleting projects.
+    """Show every git repo under a folder that has uncommitted or unpushed work. Use before deleting projects.
 
     Args:
         folder: Absolute folder to search.

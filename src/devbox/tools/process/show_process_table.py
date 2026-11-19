@@ -16,7 +16,7 @@ from devbox.core.utils import human_size, metrics, report, table
 
 @tool(return_direct=True)
 def show_process_table(sort_by: str = "memory", limit: int = 15) -> str:
-    """Show the user a table of top processes by 'memory' or 'cpu'.
+    """Show a table of top processes by 'memory' or 'cpu'.
 
     Args:
         sort_by: 'memory' or 'cpu'.

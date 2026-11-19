@@ -17,8 +17,7 @@ from devbox.core.utils import note, report, run_cmd, table, truncate
 
 @tool(return_direct=True)
 def scan_outdated_packages(project_path: str, ecosystem: str = "python") -> str:
-    """Show the user the outdated packages of a project.
-    The result is shown directly to the user and ends your turn.
+    """Show the outdated packages of a project.
 
     Args:
         project_path: Absolute path of the project folder.
