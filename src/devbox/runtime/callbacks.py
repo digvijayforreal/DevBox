@@ -16,9 +16,10 @@ from uuid import UUID
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import ToolMessage
 
-from devbox import config
-from devbox.tools import ACTION_TOOL_NAMES, SHOW_TOOL_NAMES
-from devbox.usage import tracker
+from devbox.core import config
+from devbox.agents.registry import ACTION_TOOL_NAMES
+from devbox.agents.registry import DIRECT_TOOL_NAMES as SHOW_TOOL_NAMES
+from devbox.llm.usage import tracker
 
 Sink = Callable[[dict], None]
 

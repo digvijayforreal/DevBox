@@ -1,0 +1,1 @@
+"""Dependency agent tools, one file per tool: search_installed_programs, scan_outdated_packages, show_vulnerable_dependencies, show_git_repos_with_uncommitted_changes, update_package, uninstall_program."""

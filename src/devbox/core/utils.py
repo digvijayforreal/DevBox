@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Any, Iterable
 
-from devbox import config
+from devbox.core import config
 
 
 def human_size(n: float) -> str:

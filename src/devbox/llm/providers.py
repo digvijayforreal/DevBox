@@ -14,8 +14,8 @@ from dataclasses import asdict, dataclass
 import httpx
 from langchain_core.language_models import BaseChatModel
 
-from devbox import config
-from devbox.usage import tracker
+from devbox.core import config
+from devbox.llm.usage import tracker
 
 PROVIDERS = {
     "groq": {"label": "Groq", "base_url": "https://api.groq.com/openai/v1",

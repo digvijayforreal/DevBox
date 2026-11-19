@@ -28,9 +28,10 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket,
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from devbox import config, llm
-from devbox.system_report import build_system_report
-from devbox.usage import tracker
+from devbox import llm
+from devbox.core import config
+from devbox.core.system_report import build_system_report
+from devbox.llm.usage import tracker
 
 STATIC_DIR = Path(__file__).parent / "static"
 TOKEN = secrets.token_urlsafe(24)
@@ -122,7 +123,7 @@ class Hub:
     def _run_turn(self, text: str) -> None:
         try:
             if self.session is None:
-                from devbox.engine import Session
+                from devbox.runtime.engine import Session
                 self.session = Session(sink=self.sink)
             outputs = self.session.run(text, self.ask)
             for o in outputs:
@@ -271,8 +272,8 @@ def api_system() -> dict:
 
 @app.get("/api/config", dependencies=[Depends(require_token)])
 def api_config() -> dict:
-    from devbox.agents.graph import AGENT_TOOLS, AGENTS
-    from devbox.callbacks import tool_kind
+    from devbox.agents.registry import AGENT_TOOLS, AGENTS
+    from devbox.runtime.callbacks import tool_kind
 
     return {
         "keys": {"groq": bool(config.GROQ_API_KEY), "openai": bool(config.OPENAI_API_KEY),

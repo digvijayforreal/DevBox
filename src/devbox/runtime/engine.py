@@ -12,8 +12,9 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from devbox import llm
 from devbox.agents.graph import build_graph, text_of
-from devbox.callbacks import ActivityCallback, Sink
-from devbox.tools import ACTION_TOOL_NAMES, SHOW_TOOL_NAMES
+from devbox.runtime.callbacks import ActivityCallback, Sink
+from devbox.agents.registry import ACTION_TOOL_NAMES
+from devbox.agents.registry import DIRECT_TOOL_NAMES as SHOW_TOOL_NAMES
 
 # ask(payload) -> {"decision": "approve" | "edit" | "reject", "args": {...}, "reason": "..."}
 AskFn = Callable[[dict], dict]
